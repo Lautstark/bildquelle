@@ -83,7 +83,7 @@ describe('ArasaacProvider', () => {
 
     const arasaac = new ArasaacProvider();
     expect(await arasaac.search('Straßenbahn')).toEqual([]);
-    expect(arasaac.status()).toEqual({ kind: 'error', message: 'offline' });
+    expect(arasaac.status()).toEqual({ kind: 'error', code: 'network', message: 'offline' });
   });
 
   it('coalesces concurrent lookups of the same word', async () => {

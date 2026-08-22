@@ -40,7 +40,8 @@ export class MetacomProvider implements SymbolProvider {
   #byPath = new Map<string, MetacomEntry>();
   #objectUrls = new Map<string, string>();
   #rootName = '';
-  #status: ProviderStatus = { kind: 'needs-setup', message: 'Noch kein METACOM-Ordner ausgewählt.' };
+  #status: ProviderStatus =
+    { kind: 'needs-setup', code: 'no-folder', message: 'Noch kein METACOM-Ordner ausgewählt.' };
   #listeners = new Set<ProviderListener>();
 
   subscribe(listener: ProviderListener): () => void {
@@ -169,6 +170,7 @@ export class MetacomProvider implements SymbolProvider {
     }
     this.#setStatus({
       kind: 'needs-setup',
+      code: 'permission-needed',
       message: 'Zugriff auf den METACOM-Ordner muss erneut bestätigt werden.',
     });
     return false;
@@ -176,7 +178,7 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Firefox/Safari path: <input type="file" webkitdirectory>. Session-only. */
   async useFileList(fileList: FileList | File[]): Promise<void> {
-    this.#setStatus({ kind: 'loading', message: 'Ordner wird gelesen …' });
+    this.#setStatus({ kind: 'loading', code: 'reading-folder', message: 'Ordner wird gelesen …' });
     const files = new Map<string, File>();
     const entries: MetacomEntry[] = [];
 
@@ -195,7 +197,7 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Last-resort path: a zip of the user's own symbol folder, unpacked in-browser. */
   async useZip(file: File): Promise<void> {
-    this.#setStatus({ kind: 'loading', message: 'ZIP wird entpackt …' });
+    this.#setStatus({ kind: 'loading', code: 'unpacking-zip', message: 'ZIP wird entpackt …' });
     // Loaded on demand: JSZip is large and only this fallback path needs it.
     const { default: JSZip } = await import('jszip');
     const zip = await JSZip.loadAsync(file);
@@ -220,7 +222,9 @@ export class MetacomProvider implements SymbolProvider {
     this.#byPath.clear();
     this.#rootName = '';
     await metacomStore.clear();
-    this.#setStatus({ kind: 'needs-setup', message: 'Noch kein METACOM-Ordner ausgewählt.' });
+    this.#setStatus(
+      { kind: 'needs-setup', code: 'no-folder', message: 'Noch kein METACOM-Ordner ausgewählt.' },
+    );
   }
 
   /** Re-walks the folder, for when the user has added symbols since the last index. */
@@ -231,13 +235,14 @@ export class MetacomProvider implements SymbolProvider {
   /* ------------------------------------------------------------- index ---- */
 
   async #buildIndexFromHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-    this.#setStatus({ kind: 'loading', message: 'Symbole werden indiziert …' });
+    this.#setStatus({ kind: 'loading', code: 'indexing', message: 'Symbole werden indiziert …' });
     const entries: MetacomEntry[] = [];
     try {
       await walk(handle, '', entries);
     } catch (err) {
       this.#setStatus({
         kind: 'error',
+        code: 'read-failed',
         message: err instanceof Error ? err.message : 'Ordner konnte nicht gelesen werden.',
       });
       return;
@@ -254,7 +259,11 @@ export class MetacomProvider implements SymbolProvider {
     this.#setStatus(
       entries.length > 0
         ? { kind: 'ready' }
-        : { kind: 'error', message: 'In diesem Ordner wurden keine Bilddateien gefunden.' },
+        : {
+            kind: 'error',
+            code: 'no-images',
+            message: 'In diesem Ordner wurden keine Bilddateien gefunden.',
+          },
     );
   }
 

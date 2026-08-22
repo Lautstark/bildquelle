@@ -175,6 +175,17 @@ re-requested per component.
 
 `search` never throws — it returns `[]` and reflects the trouble in `status()`.
 
+A status carries a `code` as well as a `message`. Branch on the code; the
+message is a German default, kept because the app this came from is German, and
+it is not a shared package's business to decide the wording for a host that
+ships in more than one language.
+
+| `kind` | `code` |
+| --- | --- |
+| `needs-setup` | `no-folder`, `permission-needed` |
+| `loading` | `reading-folder`, `unpacking-zip`, `indexing` |
+| `error` | `no-images`, `read-failed`, `network` |
+
 ### Browser support for METACOM
 
 | Browser | Folder selection | Remembers the choice |

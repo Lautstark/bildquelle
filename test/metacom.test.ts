@@ -17,6 +17,7 @@ describe('MetacomProvider', () => {
   it('starts out asking to be set up', () => {
     expect(new MetacomProvider().status()).toEqual({
       kind: 'needs-setup',
+      code: 'no-folder',
       message: 'Noch kein METACOM-Ordner ausgewählt.',
     });
   });
@@ -43,6 +44,20 @@ describe('MetacomProvider', () => {
   it('matches across umlauts, in both directions', async () => {
     expect((await metacom.search('froehlich')).map((c) => c.label)).toEqual(['fröhlich sein']);
     expect((await metacom.search('fröhlich')).map((c) => c.label)).toEqual(['fröhlich sein']);
+  });
+
+  it('gives a host something to translate, not only a sentence to print', async () => {
+    // vorlaut ships in German and in English, from a table of its own, so the
+    // German default here cannot be the only thing a status carries.
+    const fresh = new MetacomProvider();
+    const status = fresh.status();
+    expect(status.kind).toBe('needs-setup');
+    expect(status.kind === 'needs-setup' && status.code).toBe('no-folder');
+
+    await fresh.useFileList([fileAt('METACOM_9/liesmich.txt')]);
+    const empty = fresh.status();
+    expect(empty.kind).toBe('error');
+    expect(empty.kind === 'error' && empty.code).toBe('no-images');
   });
 
   it('returns nothing rather than throwing for an unknown word', async () => {

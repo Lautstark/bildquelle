@@ -17,11 +17,28 @@ export interface Candidate {
   score: number;
 }
 
+/**
+ * Why a provider is not usable, and a sentence saying so.
+ *
+ * `code` is the part a host should branch on. `message` is a German default,
+ * because the app this came from is German — but vorlaut ships in German *and*
+ * English through a table of its own, so a shared package cannot be the one
+ * deciding the wording. Show `message` if it suits you; translate from `code`
+ * if it does not.
+ */
 export type ProviderStatus =
   | { kind: 'ready' }
-  | { kind: 'needs-setup'; message: string }
-  | { kind: 'loading'; message: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'needs-setup'; code: NeedsSetup; message: string }
+  | { kind: 'loading'; code: Loading; message: string }
+  | { kind: 'error'; code: Failed; message: string };
+
+/** No folder has been chosen yet, or the browser wants access confirmed again. */
+export type NeedsSetup = 'no-folder' | 'permission-needed';
+
+export type Loading = 'reading-folder' | 'unpacking-zip' | 'indexing';
+
+/** The folder held no images, could not be read, or ARASAAC did not answer. */
+export type Failed = 'no-images' | 'read-failed' | 'network';
 
 /** Notifies the host when a provider's readiness changes (folder picked, index built). */
 export type ProviderListener = () => void;
