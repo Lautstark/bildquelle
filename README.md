@@ -53,6 +53,28 @@ METACOM is a **commercial symbol set, licensed per person.**
 Without the user's own METACOM licence the feature simply does not work. That is
 deliberate.
 
+### What goes over the wire
+
+Stated precisely, because a package cannot borrow its host's privacy notice —
+whoever installs this inherits the behaviour without inheriting the README.
+
+| Provider | Requests it makes | What those requests carry |
+| --- | --- | --- |
+| ARASAAC | `GET api.arasaac.org/v1/pictograms/de/search/<term>` per lookup, `GET static.arasaac.org/pictograms/<id>/…` per image | The search term, and by implication which pictograms were shown. No identifiers, no account, no API key, no analytics, no cookies set by us. ARASAAC sees the browser's IP address, as any site would. |
+| METACOM | none, ever | — |
+
+Both are cached in IndexedDB, so a repeated lookup and a re-opened session make
+no request at all.
+
+That first row is worth stating rather than rounding down to "nothing leaves
+your machine". A search term here is a word from a sentence somebody wrote for a
+particular child, and it goes to a third party. Nothing else does — not the
+sentence, not the board, not a single byte of METACOM — but that word does.
+
+A consumer that must make no third-party request at all has two options: do not
+offer the ARASAAC provider, or warm its cache ahead of time and stay offline
+afterwards. METACOM-only operation is fully local by construction.
+
 ### What holds the rule up
 
 Documentation is the weakest form of enforcement, so the rule is also built into
