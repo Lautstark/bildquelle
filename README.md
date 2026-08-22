@@ -63,8 +63,11 @@ whoever installs this inherits the behaviour without inheriting the README.
 | ARASAAC | `GET api.arasaac.org/v1/pictograms/de/search/<term>` per lookup, `GET static.arasaac.org/pictograms/<id>/…` per image | The search term, and by implication which pictograms were shown. No identifiers, no account, no API key, no analytics, no cookies set by us. ARASAAC sees the browser's IP address, as any site would. |
 | METACOM | none, ever | — |
 
-Both are cached in IndexedDB, so a repeated lookup and a re-opened session make
-no request at all.
+Both are cached in IndexedDB. That is a privacy property before it is a
+performance one: a word is sent once and then answered locally for 30 days, so a
+family working through the same picture book over several weeks produces one
+request per word rather than one every time a board is opened. Images likewise —
+fetched once, then served from disk. After 30 days a search is made again.
 
 That first row is worth stating rather than rounding down to "nothing leaves
 your machine". A search term here is a word from a sentence somebody wrote for a
@@ -165,7 +168,7 @@ A database named `bildquelle`, alongside whatever the host keeps in its own:
 
 | Store | Contents |
 | --- | --- |
-| `arasaacSearch` | Cached result lists, 30-day freshness, served stale when offline. |
+| `arasaacSearch` | Cached result lists, 30-day freshness, served stale when offline. Also what keeps repeat lookups off the network — see [What goes over the wire](#what-goes-over-the-wire). |
 | `arasaacImages` | Cached pictogram blobs — public CC BY-NC-SA artwork. |
 | `metacomIndex` | Paths, labels and search terms. **No image data.** |
 | `metacomHandles` | The directory handle: permission to read, not any content. |
