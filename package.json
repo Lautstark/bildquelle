@@ -39,7 +39,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "prepare": "npm run build && npm run build:browser",
-    "build:browser": "esbuild src/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"
+    "build:browser": "esbuild src/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap",
+    "preversion": "npm run typecheck && npm test && npm run build && npm run build:browser"
   },
   "dependencies": {
     "idb": "^8.0.3",

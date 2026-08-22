@@ -104,13 +104,30 @@ must not be uploaded or shared as-is.
 
 ## Install
 
-Consumed straight from GitHub — there is no registry publish. Pin it by commit:
+Consumed straight from GitHub — there is no registry publish. Ask for a semver
+range, not a commit:
 
 ```
-npm install github:Lautstark/bildquelle#<commit-sha>
+npm install github:Lautstark/bildquelle#semver:^1.0.0
 ```
 
-`prepare` compiles `dist/` at install time, so nothing built is checked in.
+npm resolves that against the `v*` tags in this repo, so `npm update` moves you
+within the major and a breaking release has to be opted into. Pinning a raw
+`#<commit-sha>` still works and is what to reach for when bisecting, but it
+opts out of that protection — the SHA says nothing about whether the API moved.
+
+Releases are cut with `npm version`; see [RELEASING.md](RELEASING.md).
+
+`prepare` compiles `dist/` at install time, so nothing built is checked in. Two
+consequences worth knowing before you install:
+
+- The build runs on *your* machine, so `typescript` and `esbuild` are fetched
+  into your tree even though they are this package's devDependencies.
+- Installing with `--ignore-scripts` does not fail. It leaves you `src/` and no
+  `dist/` at all, reports success, and the first `import` is what breaks. Recent
+  npm also warns that `prepare` is "not yet covered by allowScripts" — it still
+  runs today, but a consumer that hardens its install is the failure case to
+  expect here, and it will not look like an install problem when it lands.
 
 ### Without a bundler
 
