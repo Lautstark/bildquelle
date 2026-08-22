@@ -287,17 +287,27 @@ export class MetacomProvider implements SymbolProvider {
   /* ------------------------------------------------------------- image ---- */
 
   /**
-   * The id behind a bare file name — `Apfel_rot-02` for
-   * `METACOM_9/Essen/Apfel_rot-02.png` — or null when no file has that name.
+   * The id behind a stored name — or null when nothing here answers to it.
    *
    * This exists for consumers whose *stored* references are names rather than
-   * paths. vorlaut writes `metacom:<stem>` into layouts and into exported
-   * `.obz` documents, deliberately: a name survives the collection moving to
-   * another disk or machine, where a path is a fact about one copy. Reading
-   * such a reference back needs exactly this lookup, and nothing public
-   * offered it — `search()` ranks and truncates, which is right for a search
-   * box and wrong for resolution, where a miss must mean "not there" and
-   * never "outranked".
+   * paths: a name survives the collection moving to another disk or machine,
+   * where a path is a fact about one copy. Reading such a reference back needs
+   * exactly this lookup, and nothing public offered it — `search()` ranks and
+   * truncates, which is right for a search box and wrong for resolution, where
+   * a miss must mean "not there" and never "outranked".
+   *
+   * Two shapes arrive. A bare name — `Apfel_rot-02` — matches the file with
+   * exactly that stem: the original reference shape, written by every document
+   * that exists, so it stays valid forever. A name carrying a `/` —
+   * `PNG_ohne_Rahmen/ja` — also says which *rendering* was meant: METACOM
+   * ships parallel folders holding identical file names, and the stem alone
+   * cannot tell them apart. It matches the entry whose path ends with that
+   * suffix, whatever the root above it is called, because the folders are part
+   * of a METACOM distribution while the root only names one copy of it. When
+   * no path matches — a copy arranged differently — the last segment falls
+   * back to the bare-name rule: the right symbol in another rendering beats a
+   * placeholder, and is what every reference resolved to before folders could
+   * be said at all.
    *
    * Exact, including case. The names come out of this same index via the
    * consumer's own stem-stripping, so a case difference is a real difference —
@@ -305,9 +315,21 @@ export class MetacomProvider implements SymbolProvider {
    * is worse than a placeholder.
    */
   idForName(name: string): string | null {
+    if (name.includes('/')) {
+      const suffix = '/' + name;
+      for (const entry of this.#entries) {
+        if (entry.path.replace(IMAGE_EXT, '').endsWith(suffix)) return entry.path;
+      }
+      return this.#idForStem(name.split('/').pop() ?? '');
+    }
+    return this.#idForStem(name);
+  }
+
+  #idForStem(stem: string): string | null {
+    if (!stem) return null;
     for (const entry of this.#entries) {
       const base = entry.path.split('/').pop() ?? entry.path;
-      if (base.replace(IMAGE_EXT, '') === name) return entry.path;
+      if (base.replace(IMAGE_EXT, '') === stem) return entry.path;
     }
     return null;
   }

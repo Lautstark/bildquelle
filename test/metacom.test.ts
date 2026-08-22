@@ -48,6 +48,29 @@ describe('MetacomProvider', () => {
     expect(metacom.idForName('')).toBeNull();
   });
 
+  it('answers a folder-qualified name from any root, falling back to the stem', async () => {
+    // METACOM ships parallel rendering folders holding identical file names,
+    // so a stem cannot say which rendering was picked. A consumer may store
+    // the path under the collection root instead; matching ignores the root
+    // because the folders belong to the distribution while the root only
+    // names one copy of it.
+    const pair = new MetacomProvider();
+    await pair.useFileList([
+      fileAt('METACOM_9/PNG_mit_Rahmen/ja.png'),
+      fileAt('METACOM_9/PNG_ohne_Rahmen/ja.png'),
+    ]);
+    expect(pair.idForName('PNG_mit_Rahmen/ja')).toBe('METACOM_9/PNG_mit_Rahmen/ja.png');
+    expect(pair.idForName('PNG_ohne_Rahmen/ja')).toBe('METACOM_9/PNG_ohne_Rahmen/ja.png');
+    // The bare stem keeps its first-hit answer, for every document written
+    // before folders could be said.
+    expect(pair.idForName('ja')).toBe('METACOM_9/PNG_mit_Rahmen/ja.png');
+    // A folder this copy does not have degrades to the stem - the right
+    // symbol in another rendering beats a placeholder ...
+    expect(pair.idForName('JPG_farbig/ja')).toBe('METACOM_9/PNG_mit_Rahmen/ja.png');
+    // ... but a stem that is nowhere is still a miss.
+    expect(pair.idForName('PNG_mit_Rahmen/nein')).toBeNull();
+  });
+
   it('ranks the closer filename first', async () => {
     const hits = await metacom.search('Apfel');
     expect(hits.map((c) => c.label)).toEqual(['Apfel rot', 'Apfelsaft']);
