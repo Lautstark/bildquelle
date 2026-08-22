@@ -71,6 +71,24 @@ describe('MetacomProvider', () => {
     expect(pair.idForName('PNG_mit_Rahmen/nein')).toBeNull();
   });
 
+  it('finds a qualified name across the index shapes the sources produce', async () => {
+    // A picked directory handle indexes paths without the root; a file list
+    // indexes them with it. A name written against either shape must find the
+    // same picture in the other, so equality counts as a match and a miss
+    // sheds its leftmost segment and tries again.
+    const rootless = new MetacomProvider();
+    await rootless.useFileList([
+      fileAt('PNG_mit_Rahmen/ja.png'),
+      fileAt('PNG_ohne_Rahmen/ja.png'),
+    ]);
+    // The whole indexed path, extension stripped: the equality half.
+    expect(rootless.idForName('PNG_ohne_Rahmen/ja')).toBe('PNG_ohne_Rahmen/ja.png');
+    // A name that carries a root this index never had: shed it, then match.
+    expect(rootless.idForName('METACOM_9/PNG_ohne_Rahmen/ja')).toBe('PNG_ohne_Rahmen/ja.png');
+    // Shedding stops at the most specific hit, not the first stem.
+    expect(rootless.idForName('anderswo/PNG_ohne_Rahmen/ja')).toBe('PNG_ohne_Rahmen/ja.png');
+  });
+
   it('ranks the closer filename first', async () => {
     const hits = await metacom.search('Apfel');
     expect(hits.map((c) => c.label)).toEqual(['Apfel rot', 'Apfelsaft']);

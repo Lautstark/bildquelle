@@ -301,28 +301,46 @@ export class MetacomProvider implements SymbolProvider {
    * that exists, so it stays valid forever. A name carrying a `/` —
    * `PNG_ohne_Rahmen/ja` — also says which *rendering* was meant: METACOM
    * ships parallel folders holding identical file names, and the stem alone
-   * cannot tell them apart. It matches the entry whose path ends with that
-   * suffix, whatever the root above it is called, because the folders are part
-   * of a METACOM distribution while the root only names one copy of it. When
-   * no path matches — a copy arranged differently — the last segment falls
-   * back to the bare-name rule: the right symbol in another rendering beats a
-   * placeholder, and is what every reference resolved to before folders could
-   * be said at all.
+   * cannot tell them apart. It matches the entry whose extension-stripped path
+   * *is* that name or ends with `/` + that name, whatever sits above it —
+   * the folders are part of a METACOM distribution while everything above
+   * them only names one copy of it.
    *
-   * Exact, including case. The names come out of this same index via the
-   * consumer's own stem-stripping, so a case difference is a real difference —
-   * and a forgiving match could hand back the wrong licensed artwork, which
-   * is worse than a placeholder.
+   * The two id shapes this index itself produces are why both comparisons
+   * exist and why a miss sheds its leftmost segment and tries again: a picked
+   * directory handle indexes paths without the root ("PNG_ohne_Rahmen/ja.png"),
+   * a file list indexes them with it ("METACOM_9/PNG_ohne_Rahmen/ja.png"), and
+   * a zip does whatever the zip was made to do. A name written against one
+   * shape has to find the same picture in any other, so the qualified match is
+   * tried most-specific first and the bare stem — the rule every old document
+   * already relies on — is where the walk ends. The right symbol in another
+   * rendering beats a placeholder.
+   *
+   * Exact per candidate, including case. The names come out of this same
+   * index via the consumer's own stem-stripping, so a case difference is a
+   * real difference — and a forgiving match could hand back the wrong
+   * licensed artwork, which is worse than a placeholder.
    */
   idForName(name: string): string | null {
-    if (name.includes('/')) {
-      const suffix = '/' + name;
-      for (const entry of this.#entries) {
-        if (entry.path.replace(IMAGE_EXT, '').endsWith(suffix)) return entry.path;
-      }
-      return this.#idForStem(name.split('/').pop() ?? '');
+    let candidate = name;
+    for (;;) {
+      const hit = candidate.includes('/')
+        ? this.#idForPath(candidate)
+        : this.#idForStem(candidate);
+      if (hit) return hit;
+      const cut = candidate.indexOf('/');
+      if (cut < 0) return null;
+      candidate = candidate.slice(cut + 1);
     }
-    return this.#idForStem(name);
+  }
+
+  #idForPath(path: string): string | null {
+    const suffix = '/' + path;
+    for (const entry of this.#entries) {
+      const stripped = entry.path.replace(IMAGE_EXT, '');
+      if (stripped === path || stripped.endsWith(suffix)) return entry.path;
+    }
+    return null;
   }
 
   #idForStem(stem: string): string | null {
