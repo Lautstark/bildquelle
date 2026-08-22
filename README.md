@@ -112,6 +112,27 @@ npm install github:Lautstark/bildquelle#<commit-sha>
 
 `prepare` compiles `dist/` at install time, so nothing built is checked in.
 
+### Without a bundler
+
+A host that serves plain ES modules — no npm, no Vite — cannot resolve the bare
+`idb` and `jszip` imports in `dist/`. For that case the package also builds
+`dist/browser/`, which is self-contained: one 25 kB module with `idb` inlined,
+and JSZip left as a lazily imported chunk so the 148 kB only loads if someone
+takes the ZIP route.
+
+Vendor that directory and point an import map at it, keeping the bare specifier
+so the map can simply be deleted once a bundler arrives:
+
+```html
+<script type="importmap">
+  { "imports": { "@lautstark/bildquelle": "/vendor/bildquelle/index.js" } }
+</script>
+```
+
+`dist/browser/` carries third-party code, so it inherits those licences too:
+[idb](https://github.com/jakearchibald/idb) is ISC and
+[JSZip](https://stuk.github.io/jszip/) is MIT.
+
 ## Use
 
 ```ts

@@ -22,6 +22,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/browser/index.js"
     }
   },
   "files": [
@@ -34,7 +38,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepare": "npm run build"
+    "prepare": "npm run build && npm run build:browser",
+    "build:browser": "esbuild src/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"
   },
   "dependencies": {
     "idb": "^8.0.3",
@@ -42,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.0.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
