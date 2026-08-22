@@ -5,17 +5,20 @@ There is no registry publish. A **git tag is the release** — consumers resolve
 version becomes real for bildhaft and vorlaut. Treat it as publishing, because
 it is.
 
-## The first release
+## Why v1.0.0 has no bump commit
 
-`npm version` bumps, and `1.0.0` is already the version in `package.json` — it
-has simply never been tagged. So the first tag is cut by hand, which means the
-`preversion` gate does not run for it. Run the gate yourself before tagging:
+`npm version` bumps, and `1.0.0` was already the version in `package.json` — it
+had simply never been tagged. So `v1.0.0` was cut by hand, with the gate run
+manually because `preversion` only fires on a bump:
 
 ```
 npm run typecheck && npm test && npm run build && npm run build:browser
+git tag -a v1.0.0 -m "1.0.0"
 ```
 
-Then `git tag v1.0.0`. Every release after this one uses the flow below.
+Annotated, because that is what `npm version` creates and the tags should not
+be two different kinds of object. Every release after this one uses the flow
+below.
 
 ## Cutting a release
 
