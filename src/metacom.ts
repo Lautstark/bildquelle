@@ -95,22 +95,8 @@ export class MetacomProvider implements SymbolProvider {
     const stored = await metacomStore.readHandle();
     if (!stored) return false;
 
-    const handle = stored as FileSystemDirectoryHandle & {
-      queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
-    };
-
-    try {
-      const state = (await handle.queryPermission?.({ mode: 'read' })) ?? 'granted';
-      if (state !== 'granted') {
-        this.#setStatus({
-          kind: 'needs-setup',
-          message: 'Zugriff auf den METACOM-Ordner muss erneut bestätigt werden.',
-        });
-        return false;
-      }
-    } catch {
-      return false;
-    }
+    const handle = stored as FileSystemDirectoryHandle;
+    if (!(await this.#ensureReadPermission(handle))) return false;
 
     this.#source = { kind: 'handle', handle };
     const index = await metacomStore.readIndex();
@@ -161,7 +147,31 @@ export class MetacomProvider implements SymbolProvider {
     this.#source = { kind: 'handle', handle };
     // Only the handle is stored — a capability to read, not any file content.
     await metacomStore.writeHandle(handle);
+    // A handle straight from the picker is granted; one carried over from
+    // elsewhere may need the user to confirm again, which needs a click.
+    if (!(await this.#ensureReadPermission(handle))) return;
     await this.#buildIndexFromHandle(handle);
+  }
+
+  /**
+   * Chromium keeps a handle valid across visits but may still want the user to
+   * re-confirm, and that confirmation needs a gesture we do not have here. So a
+   * refusal is not an error: it asks for a click and waits.
+   */
+  async #ensureReadPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+    const scoped = handle as FileSystemDirectoryHandle & {
+      queryPermission?: (d: { mode: string }) => Promise<PermissionState>;
+    };
+    try {
+      if (((await scoped.queryPermission?.({ mode: 'read' })) ?? 'granted') === 'granted') return true;
+    } catch {
+      return false;
+    }
+    this.#setStatus({
+      kind: 'needs-setup',
+      message: 'Zugriff auf den METACOM-Ordner muss erneut bestätigt werden.',
+    });
+    return false;
   }
 
   /** Firefox/Safari path: <input type="file" webkitdirectory>. Session-only. */
