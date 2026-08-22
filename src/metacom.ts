@@ -286,6 +286,32 @@ export class MetacomProvider implements SymbolProvider {
 
   /* ------------------------------------------------------------- image ---- */
 
+  /**
+   * The id behind a bare file name — `Apfel_rot-02` for
+   * `METACOM_9/Essen/Apfel_rot-02.png` — or null when no file has that name.
+   *
+   * This exists for consumers whose *stored* references are names rather than
+   * paths. vorlaut writes `metacom:<stem>` into layouts and into exported
+   * `.obz` documents, deliberately: a name survives the collection moving to
+   * another disk or machine, where a path is a fact about one copy. Reading
+   * such a reference back needs exactly this lookup, and nothing public
+   * offered it — `search()` ranks and truncates, which is right for a search
+   * box and wrong for resolution, where a miss must mean "not there" and
+   * never "outranked".
+   *
+   * Exact, including case. The names come out of this same index via the
+   * consumer's own stem-stripping, so a case difference is a real difference —
+   * and a forgiving match could hand back the wrong licensed artwork, which
+   * is worse than a placeholder.
+   */
+  idForName(name: string): string | null {
+    for (const entry of this.#entries) {
+      const base = entry.path.split('/').pop() ?? entry.path;
+      if (base.replace(IMAGE_EXT, '') === name) return entry.path;
+    }
+    return null;
+  }
+
   async getImageUrl(id: string): Promise<string | null> {
     const live = this.#objectUrls.get(id);
     if (live) return live;

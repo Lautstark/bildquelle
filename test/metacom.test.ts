@@ -35,6 +35,19 @@ describe('MetacomProvider', () => {
     expect(await metacom.labelFor('METACOM_9/Gefuehle/fröhlich-sein.png')).toBe('fröhlich sein');
   });
 
+  it('answers the id behind a bare name, exactly or not at all', () => {
+    // The reverse of what a stored reference records: vorlaut keeps
+    // "metacom:Apfel_rot-02" so a board survives the collection moving, and
+    // resolution has to find the file again from the stem alone.
+    expect(metacom.idForName('Apfel_rot-02')).toBe('METACOM_9/Essen/Apfel_rot-02.png');
+    expect(metacom.idForName('fröhlich-sein')).toBe('METACOM_9/Gefuehle/fröhlich-sein.png');
+    // Not ranked, not folded, not forgiving: a near miss is a miss. The wrong
+    // licensed artwork is worse than a placeholder.
+    expect(metacom.idForName('Apfel_rot')).toBeNull();
+    expect(metacom.idForName('apfel_rot-02')).toBeNull();
+    expect(metacom.idForName('')).toBeNull();
+  });
+
   it('ranks the closer filename first', async () => {
     const hits = await metacom.search('Apfel');
     expect(hits.map((c) => c.label)).toEqual(['Apfel rot', 'Apfelsaft']);
