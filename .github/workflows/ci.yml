@@ -13,7 +13,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Fail before the slow steps if the tag and package.json disagree.
       # npm resolves `#semver:^1.0.0` against the tag, but a consumer that
@@ -29,7 +29,7 @@ jobs:
           fi
           echo "$GITHUB_REF_NAME matches package.json"
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
