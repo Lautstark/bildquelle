@@ -153,3 +153,56 @@ describe('adopting a different folder', () => {
     await expect(fetch(before!)).rejects.toThrow();
   });
 });
+
+describe('parallel renderings', () => {
+  /*
+   * METACOM ships the same symbols several times over: with and without a
+   * frame, with and without the word printed on the picture. The folders sit
+   * side by side and hold identical file names, so every rendering of a word
+   * scores identically and the one that wins a search is whichever the index
+   * happened to list first. Which is to say: arbitrary, and mixed.
+   */
+  const metacom = new MetacomProvider();
+
+  beforeAll(async () => {
+    await metacom.useFileList([
+      fileAt('METACOM_9/PNG_mit_Text/Essen/Apfel.png'),
+      fileAt('METACOM_9/PNG_mit_Text/Essen/Banane.png'),
+      fileAt('METACOM_9/PNG_ohne_Text/Essen/Apfel.png'),
+      fileAt('METACOM_9/PNG_ohne_Text/Essen/Banane.png'),
+      // Only in one rendering. Must stay findable whatever is preferred.
+      fileAt('METACOM_9/PNG_mit_Text/Essen/Kiwi.png'),
+    ]);
+  });
+
+  it('names the folders that tell identical file names apart', () => {
+    // Not "Essen" and not "METACOM_9": those are common to every copy of a
+    // name, so they say nothing about which rendering you are looking at.
+    expect(metacom.renderings()).toEqual([
+      { segment: 'PNG_mit_Text', count: 2 },
+      { segment: 'PNG_ohne_Text', count: 2 },
+    ]);
+  });
+
+  it('puts the preferred rendering first without hiding the others', async () => {
+    metacom.preferRendering('PNG_ohne_Text');
+    const hits = await metacom.search('Apfel');
+    expect(hits[0].id).toBe('METACOM_9/PNG_ohne_Text/Essen/Apfel.png');
+    expect(hits.map((h) => h.id)).toContain('METACOM_9/PNG_mit_Text/Essen/Apfel.png');
+
+    metacom.preferRendering('PNG_mit_Text');
+    expect((await metacom.search('Apfel'))[0].id)
+      .toBe('METACOM_9/PNG_mit_Text/Essen/Apfel.png');
+
+    metacom.preferRendering(null);
+  });
+
+  it('never lets a preference outrank a better match', async () => {
+    metacom.preferRendering('PNG_ohne_Text');
+    // Kiwi exists only in the other rendering. A preference orders equals; it
+    // must not push a worse match above the word actually asked for.
+    expect((await metacom.search('Kiwi'))[0].id)
+      .toBe('METACOM_9/PNG_mit_Text/Essen/Kiwi.png');
+    metacom.preferRendering(null);
+  });
+});

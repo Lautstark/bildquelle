@@ -40,6 +40,7 @@ export class MetacomProvider implements SymbolProvider {
   #byPath = new Map<string, MetacomEntry>();
   #objectUrls = new Map<string, string>();
   #rootName = '';
+  #preferred: string | null = null;
   #status: ProviderStatus =
     { kind: 'needs-setup', code: 'no-folder', message: 'Noch kein METACOM-Ordner ausgewählt.' };
   #listeners = new Set<ProviderListener>();
@@ -290,7 +291,81 @@ export class MetacomProvider implements SymbolProvider {
       if (best >= 25) scored.push({ id: entry.path, label: entry.label, score: best });
     }
 
-    return scored.sort((a, b) => b.score - a.score || a.label.length - b.label.length).slice(0, 24);
+    /*
+     * The preference orders equals and nothing more. It sits below the score
+     * so a rendering can never outrank a better match — a word that exists in
+     * only one folder still wins its own search — and above label length,
+     * because parallel renderings share a file name and therefore tie there
+     * too. Without it the winner among identical names is whichever the index
+     * happened to list first.
+     */
+    return scored
+      .sort((a, b) => b.score - a.score
+        || this.#renderingRank(a.id) - this.#renderingRank(b.id)
+        || a.label.length - b.label.length)
+      .slice(0, 24);
+  }
+
+  #renderingRank(path: string): number {
+    if (!this.#preferred) return 0;
+    return path.split('/').slice(0, -1).includes(this.#preferred) ? 0 : 1;
+  }
+
+  /**
+   * Prefer one rendering when several hold the same file name. Ordering only:
+   * nothing is filtered out, so a symbol that exists in just one folder stays
+   * reachable. Pass null to go back to no preference.
+   */
+  preferRendering(segment: string | null): void {
+    this.#preferred = segment?.trim() || null;
+  }
+
+  /** The rendering currently preferred, or null. */
+  get preferredRendering(): string | null {
+    return this.#preferred;
+  }
+
+  /**
+   * The folders that tell identical file names apart, with how many names each
+   * one covers.
+   *
+   * METACOM ships its symbols several times over — with and without a frame,
+   * with and without the word printed on the picture — as parallel folders
+   * holding the same file names. Only the segments that *differ* within a group
+   * of same-named files identify a rendering: the ones every copy shares are
+   * the collection root and the category, which say nothing about which
+   * rendering you are looking at.
+   *
+   * Derived from the index rather than from a list of known folder names,
+   * because a user's copy is theirs: renamed, partial, or organised for a
+   * language this package has never seen.
+   */
+  renderings(): { segment: string; count: number }[] {
+    const byName = new Map<string, string[][]>();
+    for (const entry of this.#entries) {
+      const segments = entry.path.split('/');
+      const name = (segments.pop() ?? '').toLowerCase();
+      const group = byName.get(name);
+      if (group) group.push(segments);
+      else byName.set(name, [segments]);
+    }
+
+    const counts = new Map<string, number>();
+    for (const group of byName.values()) {
+      if (group.length < 2) continue;
+      const shared = group.reduce((common, segments) =>
+        common.filter((segment) => segments.includes(segment)));
+      for (const segments of group) {
+        for (const segment of new Set(segments)) {
+          if (shared.includes(segment)) continue;
+          counts.set(segment, (counts.get(segment) ?? 0) + 1);
+        }
+      }
+    }
+
+    return [...counts]
+      .map(([segment, count]) => ({ segment, count }))
+      .sort((a, b) => b.count - a.count || a.segment.localeCompare(b.segment));
   }
 
   /* ------------------------------------------------------------- image ---- */
