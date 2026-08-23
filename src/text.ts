@@ -5,7 +5,22 @@ export function foldGerman(value: string): string {
     .replace(/ä/g, 'ae')
     .replace(/ö/g, 'oe')
     .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss');
+    .replace(/ß/g, 'ss')
+    // Punctuation is not part of a word, and a query carrying it matched
+    // nothing at all: scoreLabel compares strings, so "hallo!" against the
+    // label "hallo" is not equal, does not start with it, is not one of its
+    // words and is not contained in it - 5 points, under every threshold. A
+    // caller typing the text of a sentence hits this on the first full stop,
+    // and the failure looks like an empty collection rather than a query that
+    // needs cleaning. Folding is what this function is for: it exists so a
+    // human's spelling and a filename can be compared forgivingly.
+    //
+    // Stripped rather than turned into spaces: "u.s.w." should fold to "usw",
+    // not to three one-letter words. Interior hyphens and slashes survive,
+    // because scoreLabel splits words on them and METACOM's filenames use
+    // them to mean something.
+    .replace(/[^\p{L}\p{N}\s\-/_]+/gu, '')
+    .trim();
 }
 
 /**
