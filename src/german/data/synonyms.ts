@@ -1,0 +1,757 @@
+/* Generated data, moved from bildhaft with the pipeline that reads it.
+ *
+ * Lemma -> words to try when the lemma itself found nothing.
+ *
+ * A TypeScript module rather than the .json it used to be: Node's ESM loader
+ * demands an import attribute for JSON and bundlers do not, and a library
+ * consumed by both should not make its consumers care about the difference.
+ *
+ * Typed rather than inferred, and deliberately not `as const`: the literal
+ * type of four and a half thousand entries is a declaration file nobody can
+ * open, and every reader of these tables wants the wide type anyway. */
+const table: Record<string, string[]> = {
+"fahrrad": [
+"Rad",
+"Velo",
+"Bike"
+],
+"rad": [
+"Fahrrad",
+"Velo",
+"Bike"
+],
+"velo": [
+"Fahrrad",
+"Rad",
+"Bike"
+],
+"bike": [
+"Fahrrad",
+"Rad",
+"Velo"
+],
+"auto": [
+"Wagen",
+"PKW"
+],
+"wagen": [
+"Auto",
+"PKW"
+],
+"pkw": [
+"Auto",
+"Wagen"
+],
+"kartoffel": [
+"Erdapfel"
+],
+"erdapfel": [
+"Kartoffel"
+],
+"möhre": [
+"Karotte",
+"Mohrrübe",
+"Rübli"
+],
+"karotte": [
+"Möhre",
+"Mohrrübe",
+"Rübli"
+],
+"mohrrübe": [
+"Möhre",
+"Karotte",
+"Rübli"
+],
+"rübli": [
+"Möhre",
+"Karotte",
+"Mohrrübe"
+],
+"brötchen": [
+"Semmel",
+"Schrippe",
+"Weckle"
+],
+"semmel": [
+"Brötchen",
+"Schrippe",
+"Weckle"
+],
+"schrippe": [
+"Brötchen",
+"Semmel",
+"Weckle"
+],
+"weckle": [
+"Brötchen",
+"Semmel",
+"Schrippe"
+],
+"junge": [
+"Bub",
+"Knabe"
+],
+"bub": [
+"Junge",
+"Knabe"
+],
+"knabe": [
+"Junge",
+"Bub"
+],
+"mädchen": [
+"Mädel"
+],
+"mädel": [
+"Mädchen"
+],
+"mama": [
+"Mutter",
+"Mutti"
+],
+"mutter": [
+"Mama",
+"Mutti"
+],
+"mutti": [
+"Mama",
+"Mutter"
+],
+"papa": [
+"Vater",
+"Vati"
+],
+"vater": [
+"Papa",
+"Vati"
+],
+"vati": [
+"Papa",
+"Vater"
+],
+"oma": [
+"Großmutter"
+],
+"großmutter": [
+"Oma"
+],
+"opa": [
+"Großvater"
+],
+"großvater": [
+"Opa"
+],
+"hund": [
+"Hündchen",
+"Welpe"
+],
+"hündchen": [
+"Hund",
+"Welpe"
+],
+"welpe": [
+"Hund",
+"Hündchen"
+],
+"katze": [
+"Kätzchen",
+"Mieze"
+],
+"kätzchen": [
+"Katze",
+"Mieze"
+],
+"mieze": [
+"Katze",
+"Kätzchen"
+],
+"sofa": [
+"Couch"
+],
+"couch": [
+"Sofa"
+],
+"handy": [
+"Mobiltelefon",
+"Smartphone"
+],
+"mobiltelefon": [
+"Handy",
+"Smartphone"
+],
+"smartphone": [
+"Handy",
+"Mobiltelefon"
+],
+"fernseher": [
+"Fernsehgerät",
+"TV"
+],
+"fernsehgerät": [
+"Fernseher",
+"TV"
+],
+"tv": [
+"Fernseher",
+"Fernsehgerät"
+],
+"toilette": [
+"Klo",
+"WC"
+],
+"klo": [
+"Toilette",
+"WC"
+],
+"wc": [
+"Toilette",
+"Klo"
+],
+"fahrstuhl": [
+"Aufzug",
+"Lift"
+],
+"aufzug": [
+"Fahrstuhl",
+"Lift"
+],
+"lift": [
+"Fahrstuhl",
+"Aufzug"
+],
+"arzt": [
+"Doktor",
+"Mediziner"
+],
+"doktor": [
+"Arzt",
+"Mediziner"
+],
+"mediziner": [
+"Arzt",
+"Doktor"
+],
+"krankenhaus": [
+"Klinik"
+],
+"klinik": [
+"Krankenhaus"
+],
+"supermarkt": [
+"Laden",
+"Geschäft",
+"Markt"
+],
+"laden": [
+"Supermarkt",
+"Geschäft",
+"Markt"
+],
+"geschäft": [
+"Supermarkt",
+"Laden",
+"Markt"
+],
+"markt": [
+"Supermarkt",
+"Laden",
+"Geschäft"
+],
+"bonbon": [
+"Süßigkeit",
+"Naschzeug"
+],
+"süßigkeit": [
+"Bonbon",
+"Naschzeug"
+],
+"naschzeug": [
+"Bonbon",
+"Süßigkeit"
+],
+"schokolade": [
+"Schoki"
+],
+"schoki": [
+"Schokolade"
+],
+"getränk": [
+"Trinken"
+],
+"trinken": [
+"Getränk"
+],
+"jacke": [
+"Anorak"
+],
+"anorak": [
+"Jacke"
+],
+"mütze": [
+"Kappe"
+],
+"kappe": [
+"Mütze"
+],
+"pullover": [
+"Pulli"
+],
+"pulli": [
+"Pullover"
+],
+"hose": [
+"Buxe"
+],
+"buxe": [
+"Hose"
+],
+"sprechen": [
+"reden",
+"sagen"
+],
+"reden": [
+"sprechen",
+"sagen"
+],
+"sagen": [
+"sprechen",
+"reden"
+],
+"gehen": [
+"laufen"
+],
+"laufen": [
+"gehen",
+"rennen",
+"sprinten"
+],
+"rennen": [
+"sprinten",
+"laufen"
+],
+"sprinten": [
+"rennen",
+"laufen"
+],
+"schauen": [
+"gucken",
+"sehen",
+"blicken"
+],
+"gucken": [
+"schauen",
+"sehen",
+"blicken"
+],
+"sehen": [
+"schauen",
+"gucken",
+"blicken"
+],
+"blicken": [
+"schauen",
+"gucken",
+"sehen"
+],
+"essen": [
+"speisen"
+],
+"speisen": [
+"essen"
+],
+"fröhlich": [
+"glücklich",
+"froh"
+],
+"glücklich": [
+"fröhlich",
+"froh"
+],
+"froh": [
+"fröhlich",
+"glücklich"
+],
+"traurig": [
+"betrübt",
+"enttäuscht"
+],
+"betrübt": [
+"traurig"
+],
+"wütend": [
+"böse",
+"sauer",
+"zornig"
+],
+"böse": [
+"wütend",
+"sauer",
+"zornig"
+],
+"sauer": [
+"wütend",
+"böse",
+"zornig"
+],
+"zornig": [
+"wütend",
+"böse",
+"sauer"
+],
+"müde": [
+"schläfrig"
+],
+"schläfrig": [
+"müde"
+],
+"schön": [
+"hübsch"
+],
+"hübsch": [
+"schön"
+],
+"groß": [
+"riesig"
+],
+"riesig": [
+"groß"
+],
+"klein": [
+"winzig"
+],
+"winzig": [
+"klein"
+],
+"schnell": [
+"flink",
+"rasch"
+],
+"flink": [
+"schnell",
+"rasch"
+],
+"rasch": [
+"schnell",
+"flink"
+],
+"kaputt": [
+"defekt"
+],
+"defekt": [
+"kaputt"
+],
+"lecker": [
+"köstlich",
+"schmackhaft"
+],
+"köstlich": [
+"lecker",
+"schmackhaft"
+],
+"schmackhaft": [
+"lecker",
+"köstlich"
+],
+"spielplatz": [
+"Spielpark"
+],
+"spielpark": [
+"Spielplatz"
+],
+"kindergarten": [
+"Kita"
+],
+"kita": [
+"Kindergarten"
+],
+"geld": [
+"Money",
+"Kohle"
+],
+"money": [
+"Geld",
+"Kohle"
+],
+"kohle": [
+"Geld",
+"Money"
+],
+"helfen": [
+"unterstützen"
+],
+"unterstützen": [
+"helfen"
+],
+"aufräumen": [
+"ordnen",
+"wegräumen"
+],
+"ordnen": [
+"aufräumen",
+"wegräumen"
+],
+"wegräumen": [
+"aufräumen",
+"ordnen"
+],
+"tschüss": [
+"ciao"
+],
+"ciao": [
+"tschüss"
+],
+"bauklotz": [
+"Baustein",
+"Klotz"
+],
+"baustein": [
+"Bauklotz",
+"Klotz"
+],
+"klotz": [
+"Bauklotz",
+"Baustein"
+],
+"mülleimer": [
+"Abfalleimer",
+"Papierkorb"
+],
+"abfalleimer": [
+"Mülleimer",
+"Papierkorb"
+],
+"papierkorb": [
+"Mülleimer",
+"Abfalleimer"
+],
+"haltestelle": [
+"Bushaltestelle",
+"Station"
+],
+"bushaltestelle": [
+"Haltestelle",
+"Station"
+],
+"station": [
+"Haltestelle",
+"Bushaltestelle"
+],
+"bauchweh": [
+"Bauchschmerzen"
+],
+"bauchschmerzen": [
+"Bauchweh"
+],
+"kopfweh": [
+"Kopfschmerzen"
+],
+"kopfschmerzen": [
+"Kopfweh"
+],
+"wochenende": [
+"Samstag",
+"Sonntag"
+],
+"samstag": [
+"Wochenende",
+"Sonntag"
+],
+"sonntag": [
+"Wochenende",
+"Samstag"
+],
+"entschuldigung": [
+"Verzeihung"
+],
+"verzeihung": [
+"Entschuldigung"
+],
+"glückwunsch": [
+"Gratulation"
+],
+"gratulation": [
+"Glückwunsch"
+],
+"monster": [
+"Ungeheuer"
+],
+"ungeheuer": [
+"Monster"
+],
+"gespenst": [
+"Geist"
+],
+"geist": [
+"Gespenst"
+],
+"schloss": [
+"Burg",
+"Palast"
+],
+"burg": [
+"Schloss",
+"Palast"
+],
+"palast": [
+"Schloss",
+"Burg"
+],
+"brüllen": [
+"schreien",
+"rufen"
+],
+"schreien": [
+"brüllen",
+"rufen"
+],
+"rufen": [
+"brüllen",
+"schreien"
+],
+"flüstern": [
+"wispern"
+],
+"wispern": [
+"flüstern"
+],
+"pfannkuchen": [
+"Eierkuchen",
+"Crêpe"
+],
+"eierkuchen": [
+"Pfannkuchen",
+"Crêpe"
+],
+"crêpe": [
+"Pfannkuchen",
+"Eierkuchen"
+],
+"brezel": [
+"Breze"
+],
+"breze": [
+"Brezel"
+],
+"schulranzen": [
+"Tasche",
+"Ranzen",
+"Schultasche"
+],
+"tasche": [
+"Schulranzen",
+"Ranzen",
+"Schultasche"
+],
+"ranzen": [
+"Schulranzen",
+"Tasche",
+"Schultasche"
+],
+"schultasche": [
+"Schulranzen",
+"Tasche",
+"Ranzen"
+],
+"buntstift": [
+"Stift",
+"Malstift"
+],
+"stift": [
+"Buntstift",
+"Malstift"
+],
+"malstift": [
+"Buntstift",
+"Stift"
+],
+"streit": [
+"streiten",
+"Konflikt",
+"Ärger"
+],
+"streiten": [
+"Streit",
+"Konflikt",
+"Ärger"
+],
+"konflikt": [
+"Streit",
+"streiten",
+"Ärger"
+],
+"ärger": [
+"Streit",
+"streiten",
+"Konflikt"
+],
+"enttäuscht": [
+"traurig"
+],
+"höflich": [
+"nett",
+"freundlich"
+],
+"nett": [
+"höflich",
+"freundlich"
+],
+"freundlich": [
+"höflich",
+"nett"
+],
+"pünktlich": [
+"Zeit",
+"Uhr",
+"rechtzeitig"
+],
+"zeit": [
+"pünktlich",
+"Uhr",
+"rechtzeitig"
+],
+"uhr": [
+"pünktlich",
+"Zeit",
+"rechtzeitig"
+],
+"rechtzeitig": [
+"pünktlich",
+"Zeit",
+"Uhr"
+],
+"kuscheltier": [
+"Teddy",
+"Stofftier",
+"Puppe"
+],
+"teddy": [
+"Kuscheltier",
+"Stofftier",
+"Puppe"
+],
+"stofftier": [
+"Kuscheltier",
+"Teddy",
+"Puppe"
+],
+"puppe": [
+"Kuscheltier",
+"Teddy",
+"Stofftier"
+],
+"aufgeregt": [
+"nervös",
+"Aufregung"
+],
+"nervös": [
+"aufgeregt",
+"Aufregung"
+],
+"aufregung": [
+"aufgeregt",
+"nervös"
+]
+};
+
+export default table;
