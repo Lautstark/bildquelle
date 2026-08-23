@@ -3,6 +3,7 @@ import {
   resolveText, resolveWord, suggest, tokenize, lemmatize, splitCompound,
   GERMAN_STOPWORDS,
 } from '../src/german/index.js';
+import { foldGerman, scoreLabel } from '../src/text.js';
 import type { Candidate, SymbolProvider } from '../src/types.js';
 
 /** A collection that holds exactly the words it is given, and nothing else. */
@@ -42,6 +43,45 @@ describe('the German pipeline, moved here from bildhaft', () => {
     const not = await resolveText('Fußball', { provider: collection([]) });
     expect(not).toHaveLength(1);
     expect(not[0]!.origin).toBe('unmatched');
+  });
+
+  it('looks a word up before the lemma the lexicon groups it under', async () => {
+    /*
+     * The seed groups the negation words, so "nein" lemmatises to "nicht" at
+     * confidence 1 - fine for reading a sentence, wrong for looking one word
+     * up. The ladder takes the first rung that answers, so the confident lemma
+     * used to decide the search and the word somebody typed was never asked
+     * for. A collection holding both has to answer with "nein".
+     */
+    expect(lemmatize('nein', false)[0]!.lemma).toBe('nicht');
+
+    const [word] = await resolveText('nein', {
+      provider: collection(['nein', 'nicht']), stopwords: [],
+    });
+    expect(word!.concept).toBe('nein');
+    expect(word!.origin).toBe('raw');
+  });
+
+  it('shows the word, not everything the lemma prefixes', async () => {
+    /*
+     * The same failure with a collection that ranks rather than matching
+     * exactly, which is what a real one does and what made this visible: a
+     * METACOM folder holds one "nein" and a great many files starting "nicht",
+     * and the picker filled with "nicht binär" and "hund nicht festhalten".
+     * An exact match scores 100 and a prefix 70, so the ranking was never the
+     * problem - "nein" was simply never looked up.
+     */
+    const files = ['nein', 'nicht binär', 'nicht gut', 'hund nicht festhalten'];
+    const ranking = {
+      id: 'metacom',
+      search: async (q: string): Promise<Candidate[]> => files
+        .map((label) => ({ id: label, label, score: scoreLabel(foldGerman(q), foldGerman(label)) }))
+        .filter((c) => c.score >= 25)
+        .sort((a, b) => b.score - a.score),
+    } as unknown as SymbolProvider;
+
+    const hits = await suggest('nein', { provider: ranking, stopwords: [] });
+    expect(hits[0]!.label).toBe('nein');
   });
 
   it('reaches for a synonym once the lemma has come up empty', async () => {

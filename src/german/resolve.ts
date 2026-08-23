@@ -68,7 +68,8 @@ export interface ResolveOptions {
  *
  * The order is the point, and it is the order German punishes you in: the
  * word itself, then its lemma, then the compound it probably is, then a
- * synonym. A word that survives all four comes back `unmatched` with no
+ * synonym. The first rung that comes back with anything wins, so the order is
+ * not a preference - it decides the answer. A word that survives all four comes back `unmatched` with no
  * candidates rather than being dropped - a board must be able to show that it
  * has nothing for a word, or the word silently disappears from a sentence
  * somebody is relying on.
@@ -84,7 +85,31 @@ export async function resolveWord(
 
   const guesses = lemmatize(token.lower, token.capitalized);
 
-  for (const { lemma } of guesses.slice(0, MAX_LEMMA_TRIES)) {
+  /*
+   * The word as it was written leads the ladder. The order above says it does
+   * and this is what makes it true: the loop used to walk the lemma guesses in
+   * confidence order, and a dictionary entry outranks the surface form there,
+   * so a table rewriting one word to another decided the search.
+   *
+   * "nein" is the case that found it. The lexicon groups the negation words,
+   * so "nein" lemmatises to "nicht" at confidence 1 - reasonable for reading a
+   * sentence, wrong for looking one word up - and the first rung that returned
+   * anything won. "nicht" prefixes half a METACOM collection, so a picker
+   * searching for "nein" was shown "nicht binär", "nicht gut" and "hund nicht
+   * festhalten", while the file called "nein" in the same folder was never
+   * asked for. A lemma is a guess about the word; the word is not.
+   *
+   * Promoted out of the guesses rather than prepended raw, so a noun keeps the
+   * form the dictionary spells it in: "Apfel" is looked up and reported as
+   * "Apfel", not as the lowercased token it was matched by. Only when no guess
+   * is the word itself does the bare token lead.
+   */
+  const tries = guesses.slice(0, MAX_LEMMA_TRIES).map((g) => g.lemma);
+  const identity = tries.find((lemma) => lemma.toLowerCase() === token.lower);
+  const ladder = [identity ?? token.lower,
+                  ...tries.filter((lemma) => lemma.toLowerCase() !== token.lower)];
+
+  for (const lemma of ladder) {
     const candidates = await o.provider.search(lemma);
     if (candidates.length > 0) {
       return [{ sourceToken: token.surface, concept: lemma,
