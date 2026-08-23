@@ -253,6 +253,15 @@ export class MetacomProvider implements SymbolProvider {
   }
 
   #adopt(entries: MetacomEntry[], rootName: string): void {
+    /*
+     * The live object URLs belong to the folder being replaced. They are keyed
+     * by path, so any that outlive the swap keep answering with the previous
+     * folder's artwork — a file that is no longer there still shows a picture,
+     * and picking a different rendering of the same word appears to do nothing.
+     * Nothing else drops them: the map is trimmed only when it grows past its
+     * limit, which can take an entire session.
+     */
+    this.#revokeAll();
     this.#entries = entries;
     this.#byPath = new Map(entries.map((e) => [e.path, e]));
     this.#rootName = rootName;

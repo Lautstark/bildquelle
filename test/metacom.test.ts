@@ -128,3 +128,28 @@ describe('MetacomProvider', () => {
     unsubscribe();
   });
 });
+
+describe('adopting a different folder', () => {
+  /*
+   * Picking a new folder replaces the index, and the pictures behind the old
+   * one are gone with it. Object URLs are keyed by the path they were made
+   * from, so any that survive keep answering with the previous folder's
+   * artwork — for METACOM that means a symbol whose file is no longer there
+   * still shows, which is exactly the case a licensed source must not have.
+   */
+  it('does not serve the previous folder’s image after a new one is picked', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([fileAt('Rendering_A/ja.png', 'first-folder')]);
+
+    const before = await metacom.getImageUrl('Rendering_A/ja.png');
+    expect(before).toMatch(/^blob:/);
+
+    // The same word, a different rendering, under a different path.
+    await metacom.useFileList([fileAt('Rendering_B/ja.png', 'second-folder')]);
+
+    // The old path is not in the new index and must not resolve at all.
+    expect(await metacom.getImageUrl('Rendering_A/ja.png')).toBeNull();
+    // And the URL handed out earlier must have been revoked with it.
+    await expect(fetch(before!)).rejects.toThrow();
+  });
+});
