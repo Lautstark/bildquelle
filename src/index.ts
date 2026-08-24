@@ -15,6 +15,8 @@ export type {
   ProviderStatus,
   SymbolProvider,
 } from './types.js';
+/** Which provider states are somebody's to act on. See the note on it. */
+export { needsAttention } from './types.js';
 
 export { ArasaacProvider, ARASAAC_ATTRIBUTION } from './arasaac.js';
 export { MetacomProvider } from './metacom.js';

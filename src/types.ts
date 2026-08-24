@@ -35,6 +35,33 @@ export type ProviderStatus =
 /** No folder has been chosen yet, or the browser wants access confirmed again. */
 export type NeedsSetup = 'no-folder' | 'permission-needed';
 
+/**
+ * Whether this state is one the person has to do something about.
+ *
+ * A provider that is not ready is not automatically a problem: `no-folder` is
+ * somebody who has not set METACOM up and may never want to, and `loading` is
+ * a state that ends on its own. The two that are a problem are the two where
+ * **the source was working and has stopped, and will not start again by
+ * itself**: the browser has withdrawn its permission on a folder that is still
+ * stored, or the folder could not be read.
+ *
+ * It is here rather than in each product because that is where it was, and the
+ * consuming products drew the same conclusion differently - one as a truncated
+ * instruction in a panel heading, one as a line of prose beside the
+ * descriptions. The presentation stays theirs: `.notice.bad` is what the family
+ * draws, and @lautstark/design's conventions.md §3.7 says what the words have
+ * to cover. Which states deserve it is this package's answer, because this
+ * package is the one that knows what the states mean.
+ *
+ * `permission-needed` is ordinary rather than exceptional - Chromium withdraws
+ * a stored handle's permission between visits, nothing is lost, and one press
+ * puts it back. Ordinary is about whose fault it is, not about whether anybody
+ * has to act.
+ */
+export const needsAttention = (status: ProviderStatus): boolean =>
+  (status.kind === 'needs-setup' && status.code === 'permission-needed')
+  || status.kind === 'error';
+
 export type Loading = 'reading-folder' | 'unpacking-zip' | 'indexing';
 
 /** The folder held no images, could not be read, or ARASAAC did not answer. */
