@@ -99,7 +99,39 @@ describe('the public API surface', () => {
       'foldGerman',
       'getProvider',
       'metacom',
+      // A pure function over a status, deliberately added: which states are a
+      // person's to act on is this package's answer, because it is the one
+      // that knows what the states mean. Reaching it does not reach a symbol.
+      'needsAttention',
       'scoreLabel',
     ].sort());
+  });
+});
+
+/*
+ * Which provider states are somebody's to act on.
+ *
+ * Two products read this status and drew the same conclusion differently: one
+ * put a whole instruction in a panel heading, where it truncated, and one left
+ * it as prose beside the descriptions. The answer belongs here; what a product
+ * draws for a true is still its own.
+ */
+describe('needsAttention', () => {
+  it('is true where the source was working and has stopped by itself', () => {
+    // The browser withdrew the permission on a folder that is still stored.
+    expect(api.needsAttention(
+      { kind: 'needs-setup', code: 'permission-needed', message: '' })).toBe(true);
+    expect(api.needsAttention(
+      { kind: 'error', code: 'read-failed', message: '' })).toBe(true);
+  });
+
+  it('is false where nobody has set it up, and while it is still working on it', () => {
+    // Not everybody has a METACOM licence, and nothing is owed by not having one.
+    expect(api.needsAttention(
+      { kind: 'needs-setup', code: 'no-folder', message: '' })).toBe(false);
+    // A state that ends on its own is not somebody's to act on.
+    expect(api.needsAttention(
+      { kind: 'loading', code: 'indexing', message: '' })).toBe(false);
+    expect(api.needsAttention({ kind: 'ready' })).toBe(false);
   });
 });
