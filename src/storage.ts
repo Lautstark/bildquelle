@@ -19,10 +19,12 @@ import type { Candidate, LanguageCode } from './types.js';
 export interface MetacomEntry {
   /** Path relative to the chosen root, used as the symbol id. */
   path: string;
-  /** Filename without extension, cleaned up for display. */
+  /** Filename without extension, cleaned up for display, and what search
+   *  matches against. Folding and splitting it into words is scoreLabel's job
+   *  and is done per query; a copy of the words used to live here and be
+   *  scored as though each were a label of its own, which made every compound
+   *  an exact match for any word in it. */
   label: string;
-  /** Lowercased, umlaut-folded label tokens for matching. */
-  terms: string[];
 }
 
 interface BildquelleDB extends DBSchema {

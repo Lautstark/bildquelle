@@ -284,10 +284,31 @@ export class MetacomProvider implements SymbolProvider {
     if (!term || this.#entries.length === 0) return [];
     const folded = foldGerman(term);
 
+    /*
+     * The folded label, and only the folded label.
+     *
+     * There used to be a second pass here, scoring each of the entry's `terms`
+     * - the label's own words, "nicht binär" held as ["nicht", "binaer"] - and
+     * keeping whichever came out higher. That pass is what a picker searching
+     * "nicht" ran into. scoreLabel answers "how well does this LABEL answer the
+     * query", and a single word handed to it as a label can only come back
+     * exact: "nicht" IS the whole of what it was given. So every label with
+     * "nicht" anywhere among its words scored 100, the answer was two dozen
+     * rows all claiming to be the word itself, and the only thing left holding
+     * them apart was the length tie-break below - which is there to order
+     * parallel renderings, not to carry this.
+     *
+     * Nothing is lost by dropping it, and that is checkable rather than hoped
+     * for: the ladder already asks every question a term could answer, of the
+     * same folded string the terms were split from. A term equal to the query
+     * is one of the label's words (60). A term starting with it is a word
+     * starting with it (40). A term containing it means the label contains it
+     * (25). All three clear the threshold, so the same entries match - they
+     * are ranked against each other properly now instead of tying at the top.
+     */
     const scored: Candidate[] = [];
     for (const entry of this.#entries) {
-      let best = scoreLabel(folded, foldGerman(entry.label));
-      for (const t of entry.terms) best = Math.max(best, scoreLabel(folded, t));
+      const best = scoreLabel(folded, foldGerman(entry.label));
       if (best >= 25) scored.push({ id: entry.path, label: entry.label, score: best });
     }
 
@@ -508,9 +529,17 @@ async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: Metacom
 const firstSegment = (path: string) => path.split('/')[0] ?? 'METACOM';
 
 /**
- * Turns "Essen/Obst/Apfel_rot-02.png" into a label of "Apfel rot" plus the
- * search terms "apfel" and "rot". METACOM filenames are the only metadata
- * available, so this cleanup is what search quality rests on.
+ * Turns "Essen/Obst/Apfel_rot-02.png" into a label of "Apfel rot". METACOM
+ * filenames are the only metadata available, so this cleanup is what search
+ * quality rests on.
+ *
+ * The label is the whole of it. An entry used to carry a pre-split `terms`
+ * list beside it, and search() scored those words as though each were a label
+ * of its own - which made every compound an exact match for any word in it.
+ * The split is not gone, it moved back to where it belongs: scoreLabel does it
+ * on the folded label and knows that a word of a label is worth less than the
+ * label. Nothing else read the field, and an index the browser keeps on disk is
+ * better off without a copy of what can be derived from the line above it.
  */
 function makeEntry(path: string): MetacomEntry {
   const base = path.split('/').pop() ?? path;
@@ -523,12 +552,5 @@ function makeEntry(path: string): MetacomEntry {
     .replace(/\s+/g, ' ')
     .trim() || stem;
 
-  const terms = [...new Set(
-    foldGerman(label)
-      .split(/[\s\-_/]+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length >= 2),
-  )];
-
-  return { path, label, terms };
+  return { path, label };
 }

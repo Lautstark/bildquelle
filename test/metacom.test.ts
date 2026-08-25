@@ -206,3 +206,114 @@ describe('parallel renderings', () => {
     metacom.preferRendering(null);
   });
 });
+
+describe('a word that other words are built out of', () => {
+  /*
+   * Reported from vorlaut's picker: typing "nicht" with METACOM chosen fills
+   * the grid with "nicht binär", "nicht mögen" and "Hund nicht festhalten",
+   * and the plain word is nowhere to be seen.
+   *
+   * The ladder in scoreLabel is not what let that happen - on the ladder the
+   * exact word is 100 and "nicht binär" is 70, and the sort is score first, so
+   * a compound cannot climb over the word it is built out of. What let it
+   * happen is that search() did not put the compounds on that ladder.
+   *
+   * makeEntry splits a label into `terms` - "nicht binär" becomes ["nicht",
+   * "binaer"] - and search() scored each of those with scoreLabel, which
+   * answers the question "how well does this LABEL answer the query". Handed a
+   * single word it can only say 100, because the word is the whole of what it
+   * was given. So every label with "nicht" anywhere among its words came back
+   * exact, and the answer to "nicht" was two dozen rows all scoring 100 with
+   * nothing to choose between them but the length tie-break that exists to
+   * order parallel renderings.
+   *
+   * Two things follow from that, and this file is here to hold both. A word
+   * that is one of a label's words is a 60, not a 100 - the label ladder
+   * already says so, and already computes it. And a collection that has no
+   * exact match must be able to say so: once the compounds stop claiming to be
+   * exact, the top score is the difference between "here is your word" and
+   * "here is the nearest thing I have".
+   */
+  const rendered = (names: string[]) =>
+    ['PNG_mit_Rahmen', 'PNG_ohne_Rahmen'].flatMap((rendering) =>
+      names.map((name) => fileAt(`METACOM_9/Grundwortschatz/${rendering}/${name}.png`)));
+
+  const COMPOUNDS = ['nicht_binär', 'nicht_mögen', 'Hund_nicht_festhalten', 'nichts'];
+
+  it('scores a compound as the compound it is, not as the word inside it', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(rendered(['nicht', ...COMPOUNDS]));
+
+    const byLabel = new Map(
+      (await metacom.search('nicht')).map((hit) => [hit.label, hit.score]));
+
+    expect(byLabel.get('nicht')).toBe(100);          // the word itself
+    expect(byLabel.get('nicht binär')).toBe(70);     // the word, then more
+    expect(byLabel.get('nicht mögen')).toBe(70);
+    expect(byLabel.get('Hund nicht festhalten')).toBe(60); // one of its words
+    expect(byLabel.get('nichts')).toBe(55);          // a word that starts the same
+  });
+
+  it('gives the word asked for the whole of the top score, in every rendering', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(rendered(['nicht', ...COMPOUNDS]));
+
+    const hits = await metacom.search('nicht');
+    // Both renderings of the plain word, and nothing else, are exact. The
+    // compounds used to sit here too, kept below it only by label length.
+    expect(hits.filter((h) => h.score === 100).map((h) => h.id)).toEqual([
+      'METACOM_9/Grundwortschatz/PNG_mit_Rahmen/nicht.png',
+      'METACOM_9/Grundwortschatz/PNG_ohne_Rahmen/nicht.png',
+    ]);
+  });
+
+  it('has a top score left to tell an exact hit from the nearest thing it has', async () => {
+    /*
+     * The other half of the report, and the one ranking cannot fix: a copy of
+     * METACOM that files its negation under "nein" and uses "nicht" only as a
+     * prefix has no plain "nicht" to rank at all. The search still answers - a
+     * near miss beats an empty grid - and this is what the inflation cost. When
+     * everything came back 100 the two collections below were indistinguishable
+     * from the outside, and a picker had no way to caption the difference.
+     *
+     * What this does NOT do is hand vorlaut the signal. Candidate.score is
+     * documented as meaningful only for ordering within one provider, and
+     * ARASAAC's numbers carry a bonus and a rank penalty, so nothing outside
+     * this file may read 100 as "exact". This asserts that METACOM's own ladder
+     * still has the distinction in it - which is the thing that has to be true
+     * before any of it can be offered.
+     */
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(rendered(['nein', ...COMPOUNDS]));
+
+    const hits = await metacom.search('nicht');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((hit) => hit.score < 100)).toBe(true);
+    expect(hits[0].score).toBe(70);
+
+    // And when it does hold the word, the same question answers the other way.
+    const held = new MetacomProvider();
+    await held.useFileList(rendered(['nicht', ...COMPOUNDS]));
+    expect((await held.search('nicht'))[0].score).toBe(100);
+  });
+
+  it('keeps the same rows: a compound scores lower, it does not drop out', async () => {
+    /*
+     * The property that makes this safe to land in a package two apps share.
+     * Every entry a term could reach, the label reaches too: a term equal to
+     * the query is one of the label's words (60), a term starting with it is a
+     * word starting with it (40), a term containing it means the label
+     * contains it (25). All three clear the threshold, so scoring the label
+     * alone re-ranks the answer without changing who is in it.
+     */
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(rendered(['nicht', ...COMPOUNDS, 'vernichten', 'Apfel']));
+
+    const labels = (await metacom.search('nicht')).map((h) => h.label);
+    expect(new Set(labels)).toEqual(new Set([
+      'nicht', 'nicht binär', 'nicht mögen', 'Hund nicht festhalten', 'nichts',
+      'vernichten', // a bare substring, admitted at 25 and ranked last
+    ]));
+    expect(labels.at(-1)).toBe('vernichten');
+  });
+});

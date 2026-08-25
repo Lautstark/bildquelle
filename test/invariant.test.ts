@@ -45,12 +45,12 @@ describe('the METACOM licensing invariant', () => {
     const stored = await dumpDatabase();
     expect(findBytes(stored)).toEqual([]);
 
-    // What it *did* keep: an index of paths, labels and search terms.
-    const index = stored.metacomIndex as { entries: { path: string; label: string; terms: string[] }[] }[];
+    // What it *did* keep: an index of paths and labels.
+    const index = stored.metacomIndex as { entries: { path: string; label: string }[] }[];
     expect(index).toHaveLength(1);
     expect(index[0].entries.map((e) => e.label)).toContain('Apfel rot');
     for (const entry of index[0].entries) {
-      expect(Object.keys(entry).sort()).toEqual(['label', 'path', 'terms']);
+      expect(Object.keys(entry).sort()).toEqual(['label', 'path']);
     }
   });
 
