@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MetacomProvider } from '../src/metacom.js';
+import { metacomStore, type MetacomEntry } from '../src/storage.js';
 import { fileAt } from './helpers.js';
 
 describe('MetacomProvider', () => {
@@ -315,5 +316,51 @@ describe('a word that other words are built out of', () => {
       'vernichten', // a bare substring, admitted at 25 and ranked last
     ]));
     expect(labels.at(-1)).toBe('vernichten');
+  });
+});
+
+describe('an index a previous version wrote', () => {
+  /*
+   * The index is cached so a cold start does not re-walk ~10k files, and it
+   * outlives the version that wrote it. Entries used to carry a third field,
+   * `terms` - the label pre-split into words - and dropping it would be a
+   * cheap mistake to make: nothing versions the stored shape, so if #adopt
+   * ever grew a check that an old entry failed, the index would be thrown
+   * away and rebuilt. For METACOM that is not a cheap reindex. Rebuilding
+   * reads the user's own folder, and a folder whose permission has lapsed
+   * asks for it again - a click nobody can explain the reason for.
+   *
+   * So the shape has to stay loose in exactly this direction: a field that is
+   * gone is carried and ignored, never rejected.
+   */
+  type LegacyEntry = MetacomEntry & { terms: string[] };
+
+  const legacy: LegacyEntry[] = [
+    { path: 'METACOM_9/GW/nicht.png', label: 'nicht', terms: ['nicht'] },
+    { path: 'METACOM_9/GW/nicht_binär.png', label: 'nicht binär', terms: ['nicht', 'binaer'] },
+    { path: 'METACOM_9/GW/Hund_nicht_festhalten.png',
+      label: 'Hund nicht festhalten', terms: ['hund', 'nicht', 'festhalten'] },
+  ];
+
+  it('is adopted as it stands, not thrown away and rebuilt', async () => {
+    // Structured-cloneable, like the real thing: the browser persists the
+    // handle itself. No queryPermission, which reads as a standing grant.
+    await metacomStore.writeHandle({ name: 'METACOM_9' });
+    await metacomStore.writeIndex('METACOM_9', legacy as MetacomEntry[]);
+
+    const metacom = new MetacomProvider();
+    expect(await metacom.restore()).toBe(true);
+    expect(metacom.isReady()).toBe(true);
+    // Three, not zero: had the stored index been rejected, restore would have
+    // fallen through to walking the folder - which this handle cannot do.
+    expect(metacom.symbolCount).toBe(3);
+
+    // And it ranks on the label alone. The dead field is carried and ignored;
+    // it does not put the compounds back at 100.
+    expect((await metacom.search('nicht')).map((h) => [h.score, h.label])).toEqual([
+      [100, 'nicht'],
+      [70, 'nicht binär'],
+      [60, 'Hund nicht festhalten'],
+    ]);
   });
 });
