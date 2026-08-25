@@ -364,3 +364,163 @@ describe('an index a previous version wrote', () => {
     ]);
   });
 });
+
+describe('the negation symbol, in the collection METACOM actually ships', () => {
+  /*
+   * Reported from vorlaut's picker, and the half of the report that survived
+   * the fix above it: typing "nicht" with METACOM chosen still buries the
+   * negation symbol under nine unrelated ones.
+   *
+   * The collection has no file called `nicht`. Its negation symbol is
+   * `nichtkein` - "nicht/kein", the German pair, written without the slash
+   * because a slash cannot go in a filename - and it lives in `Kleine_Worte`,
+   * the function-word category, in all four rendering folders.
+   *
+   * What outranked it was punctuation. `nicht_binaer` reaches the label "nicht
+   * binaer", which scoreLabel reads as the query followed by more (70).
+   * `nichtkein` has no separator to find, so the best it can reach is a bare
+   * prefix (55) - below every spelling of "nicht binaer", and below "nichte"
+   * and "nichts" on the length tie-break as well. Some of METACOM's compounds
+   * are written with a separator and some are not, and the ladder was ranking
+   * on that difference.
+   *
+   * The stems below are the real neighbourhood, named one at a time on
+   * purpose: the fix puts the separator back where it is missing, and the
+   * thing it must never do is put one inside a word that only happens to start
+   * the same way. `nichte` is a niece.
+   */
+  const RENDERINGS = [
+    ['JPG_mit_Rahmen', 'jpg'],
+    ['JPG_ohne_Rahmen', 'jpg'],
+    ['PNG_mit_Rahmen', 'png'],
+    ['PNG_ohne_Rahmen', 'png'],
+  ] as const;
+
+  /** Every stem in this copy of METACOM whose filename begins "nicht". */
+  const STEMS = [
+    'nicht_binaer', 'nicht_binaer2', 'nicht_binaer3', 'nicht_binaer4',
+    'nicht_binaer_SW', 'nicht_binaer2_SW', 'nicht_binaer3_SW', 'nicht_binaer4_SW',
+    'nichte',        // a niece
+    'nichtkauen',    // "nicht kauen"
+    'nichtkein',     // "nicht/kein" - the one somebody searching "nicht" wants
+    'nichtkomisch',  // "nicht komisch"
+    'nichtok', 'nichtok2', 'nichtok3', 'nichtok_SW', 'nichtok_dh',
+    'nichts',        // "nothing"
+  ];
+
+  const collection = (stems: string[]) =>
+    RENDERINGS.flatMap(([folder, ext]) =>
+      stems.map((stem) =>
+        fileAt(`METACOM_Symbole/Symbole_1/${folder}/Kleine_Worte/${stem}.${ext}`)));
+
+  const search = async (term: string) => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(collection(STEMS));
+    return metacom.search(term);
+  };
+
+  /**
+   * The same neighbourhood in one rendering rather than four, so that every
+   * stem is visible: the real collection answers "nicht" with 72 rows and
+   * search() hands back 24, which is the shape of the complaint but no way to
+   * assert what each stem scored.
+   */
+  const scores = async (term: string) => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList(
+      STEMS.map((stem) =>
+        fileAt(`METACOM_Symbole/Symbole_1/PNG_mit_Rahmen/Kleine_Worte/${stem}.png`)));
+    return new Map((await metacom.search(term)).map((hit) => [hit.label, hit.score]));
+  };
+
+  it('puts the negation symbol first when somebody searches for negation', async () => {
+    const hits = await search('nicht');
+    expect(hits[0].label).toBe('nichtkein');
+    expect(hits[0].id)
+      .toBe('METACOM_Symbole/Symbole_1/JPG_mit_Rahmen/Kleine_Worte/nichtkein.jpg');
+  });
+
+  it('leaves the words that only start the same way exactly where they were', async () => {
+    /*
+     * Named one at a time, because this is the property the fix is dangerous
+     * without. Each of these is a word in its own right that happens to begin
+     * with "nicht", and each keeps the bare-prefix score the ladder always gave
+     * it. `nichtok` is a miss - "ok" is a real word, two letters long, and
+     * nothing here can tell those from an ending - and it is the safe
+     * direction to miss in.
+     */
+    const byLabel = await scores('nicht');
+
+    expect(byLabel.get('nichte')).toBe(55);    // a niece, not a negation
+    expect(byLabel.get('nichts')).toBe(55);    // "nothing"
+    expect(byLabel.get('nichtok')).toBe(55);
+    expect(byLabel.get('nichtok SW')).toBe(55);
+    expect(byLabel.get('nichtok dh')).toBe(55);
+
+    // And the ones that really are "nicht" plus a word are read as such, on
+    // the same rung as the spellings that carry a separator.
+    expect(byLabel.get('nichtkein')).toBe(70);
+    expect(byLabel.get('nichtkauen')).toBe(70);
+    expect(byLabel.get('nichtkomisch')).toBe(70);
+    expect(byLabel.get('nicht binaer')).toBe(70);
+  });
+
+  it('still finds the niece, and the word after her', async () => {
+    // The search this must not break. "nichte" is her own word and her own
+    // file, so she is an exact match and nothing outranks her.
+    const niece = await search('nichte');
+    expect(niece[0].label).toBe('nichte');
+    expect(niece[0].score).toBe(100);
+
+    const nothing = await search('nichts');
+    expect(nothing[0].label).toBe('nichts');
+    expect(nothing[0].score).toBe(100);
+  });
+
+  it('still finds what "nicht binär" found before', async () => {
+    const hits = await search('nicht binär');
+    expect(hits[0].label).toBe('nicht binaer');
+    expect(hits[0].score).toBe(100);
+    // The plain spelling, ahead of the SW ones; the negation pair is nowhere
+    // near it, because this query is not asking for negation.
+    expect(hits.map((h) => h.label)).not.toContain('nichtkein');
+  });
+
+  it('reorders the answer without changing who is in it', async () => {
+    /*
+     * The property that makes this safe to land in a package two apps share.
+     * Every label the rewrite touches already began with the query, so it
+     * already scored 55 and was already in the answer; putting a separator
+     * into it can only move it. Asserted against the whole neighbourhood
+     * rather than a sample, and with the cap lifted off by searching a
+     * collection of one rendering.
+     */
+    expect(new Set((await scores('nicht')).keys())).toEqual(new Set([
+      'nicht binaer', 'nicht binaer SW', 'nicht binaer2 SW', 'nicht binaer3 SW',
+      'nicht binaer4 SW', 'nichte', 'nichtkauen', 'nichtkein', 'nichtkomisch',
+      'nichtok', 'nichtok SW', 'nichtok dh', 'nichts',
+    ]));
+  });
+
+  it('does not put a separator inside a German compound', async () => {
+    /*
+     * The guard that keeps the rewrite from rewriting German. "Apfelsaft" is
+     * not a way of writing "Apfel" - German writes a compound together
+     * precisely to say it is something else - so while the collection holds an
+     * Apfel of its own, "Apfel rot" outranks it exactly as it always did.
+     */
+    const essen = new MetacomProvider();
+    await essen.useFileList([
+      fileAt('METACOM_9/Essen/Apfel.png'),
+      fileAt('METACOM_9/Essen/Apfel_rot.png'),
+      fileAt('METACOM_9/Essen/Apfelsaft.png'),
+      fileAt('METACOM_9/Essen/Apfelbaum.png'),
+    ]);
+    expect((await essen.search('Apfel')).map((h) => [h.score, h.label])).toEqual([
+      [100, 'Apfel'],
+      [70, 'Apfel rot'],
+      [55, 'Apfelbaum'],
+      [55, 'Apfelsaft'],
+    ]);
+  });
+});
