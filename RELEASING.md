@@ -132,6 +132,45 @@ None of this outlives the next release. Once a second version exists the
 versions differ, ordinary resolution works, and only a lockfile written before
 the tags existed is affected.
 
+## Why v1.6.3 is published and should not be pinned
+
+`v1.6.3` is a bad release. It is still on the remote, because a published tag
+cannot be moved, and `v1.6.4` supersedes it — but nothing should pin it, and
+`^1.6.0` resolves past it on its own.
+
+What it changed was METACOM's ranking. METACOM writes some compounds with a
+separator and some without, so the negation symbol — filed as `nichtkein`, the
+pair "nicht/kein" written without the slash a filename cannot hold — could
+score no better than a bare prefix and sat below every spelling that happened
+to carry an underscore. `v1.6.3` fixed that by reading a run-together label as
+the query plus a word whenever what followed was three characters or more.
+
+That rule was too wide. It also promoted `nichtbinaer`, which is a compound —
+one word naming a third thing — rather than a pair. And vorlaut reads
+`Candidate.score` as a **grade**: its picker holds a `WHOLE_WORD` of 60 and,
+below it, captions the answer "this collection has no picture of its own for
+nicht". Promoting the compound over that line took the caption away for the
+exact search it was written for. Two tests in vorlaut's `picker_match` went red
+on the bump; `v1.6.4` narrows the rewrite to labels whose halves are both
+German negation words, and the caption keeps its case.
+
+The rule that comes out of it is not about negation:
+
+> **The ladder is a consumer contract, not an implementation detail.** The
+> comment on `scoreLabel` says the score is shared so that switching sources
+> does not reshuffle results — and downstream it does more than order rows.
+> vorlaut reads the rungs by number and captions on them. A change to what any
+> rung means is a change to what two apps say to the people using them, and it
+> reaches them silently: the version does not move unless somebody moves it,
+> and no type changes shape.
+
+So a ranking change is not a tidy-up. Run both consumers' suites *before*
+cutting the tag, not after the bump — `npm test` and `npm run test:e2e` in
+bildhaft, the same two in vorlaut, whose `tests/unit/picker_match.test.ts`
+searches a live provider rather than a fabricated score for exactly this
+reason. It is the cheapest thing in this document and it is the one that would
+have caught this.
+
 ## Never move a published tag
 
 If a tag is wrong, cut the next version. Re-pointing `v1.1.0` leaves consumers
