@@ -9,18 +9,27 @@ const IMAGE_EXT = /\.(png|jpe?g|svg|webp|gif|bmp)$/i;
 const MAX_LIVE_URLS = 400;
 
 /**
- * What follows the query has to be at least this long to be a word rather than
- * an ending. This is the judgement german/compound.ts already makes with its
- * own MIN_PART - "a trailing fragment shorter than MIN_PART is not a word" -
- * restated here rather than imported, because that module reaches a 160 KB
- * base-word table and the entry point this file belongs to deliberately does
- * not carry one.
+ * The German negation words, folded, as a closed set.
  *
- * It is also the whole of what keeps a niece out of a search for negation:
- * METACOM has a `nichte`, and "nicht" plus "e" is a different word, not a pair
- * written without its slash.
+ * METACOM's negation symbol is filed as `nichtkein`, and the printed symbol
+ * reads "nicht/kein" - a slash-pair, run together because a slash cannot go in
+ * a filename. A slash-pair is not a compound: it joins two words that mean the
+ * same thing in that position, where a compound names a third thing built out
+ * of the first two. That difference is the whole of what `pairApart` below is
+ * allowed to act on, and nothing in the string says which one you are looking
+ * at - only the words do.
+ *
+ * This is the negation group and only the negation group. German's lexicon
+ * groups them - `german/data/lemmas-other.ts` maps every "kein" form and
+ * "nein" onto "nicht" - and that table is the general statement of the rule,
+ * but it is 104 KB and this entry point deliberately carries none of it (the
+ * German pipeline is its own module for exactly that reason). So the one group
+ * METACOM actually ships as a pair is written out here instead, and another
+ * kind of pair would need the lexicon rather than another line in this list.
  */
-const MIN_TAIL = 3;
+const NEGATIONS = new Set([
+  'nicht', 'kein', 'keine', 'keinem', 'keinen', 'keiner', 'keines', 'nein',
+]);
 
 type Source =
   | { kind: 'none' }
@@ -323,53 +332,35 @@ export class MetacomProvider implements SymbolProvider {
     /*
      * The other half of the same report, and the half ranking can fix.
      *
-     * METACOM writes some pairs apart and some together. `nicht_binaer` reaches
-     * the label "nicht binaer", which scoreLabel reads as the query followed by
-     * more - 70. `nichtkein` is the negation pair "nicht/kein" written without
-     * its slash, because a slash cannot go in a filename, and scoreLabel has no
-     * separator to find: 55, a bare prefix, below every spelling of "nicht
-     * binaer" and below "nichte" and "nichts" on the length tie-break as well.
-     * So the one symbol a picker searching "nicht" is after is buried under
-     * nine unrelated ones, and what decides that is punctuation rather than
-     * meaning.
+     * METACOM writes some pairs apart and some together. `nicht_binaer`
+     * reaches the label "nicht binaer", which scoreLabel reads as the query
+     * followed by more - 70. `nichtkein` is the negation pair "nicht/kein"
+     * written without its slash, and scoreLabel has no separator to find: 55,
+     * a bare prefix, below every spelling of "nicht binaer" and below "nichte"
+     * and "nichts" on the length tie-break as well. So the one symbol a picker
+     * searching "nicht" is after was buried under nine unrelated ones.
      *
-     * `separated` puts the missing separator back, and only where its absence
-     * really is a filename convention. Two guards do that work, and the note on
-     * each says which case it is there for.
+     * `pairApart` puts the slash back, as a space, and only where the label
+     * really is a pair. It is deliberately narrow. An earlier version of this
+     * asked only whether what followed the query looked like a word, which
+     * also promoted "nichtbinaer" - and that is a compound, a different word
+     * that happens to start the same way. vorlaut reads this score as a grade
+     * and captions an answer that holds no picture of the word itself, so
+     * flattening that distinction took its caption away for the exact search
+     * it was written for. A pair is two words; a compound is one. Only the
+     * first is rewritten.
      *
-     * The rewrite is scored, never stored: the label a caller sees is still the
-     * one the filename gave. And it cannot change who is in the answer, only
-     * where they sit - a label it rewrites already started with the query, so
-     * it already scored 55 and was already in. Rows are reordered; none appear
-     * and none drop out.
+     * Scored, never stored: the label a caller sees is still the one the
+     * filename gave. And membership cannot change - a label it rewrites
+     * already began with one of the pair, so it already scored at least 55 and
+     * was already in the answer. Rows are reordered; none appear, none drop.
      */
-    const labels = this.#entries.map((entry) => foldGerman(entry.label));
-    /*
-     * Whether the collection holds the queried word as a symbol of its own -
-     * the guard that keeps this from rewriting German.
-     *
-     * "Apfelsaft" is not a way of writing "Apfel". It is a different word, and
-     * while there is an Apfel to be had the ladder is right to rank "Apfel rot"
-     * above it: German writes a compound together precisely to say it is
-     * something else. It is when the word itself is absent that a label built
-     * on it is the nearest the collection comes to holding it, and METACOM's
-     * choice of separator stops being a statement and goes back to being a
-     * filename.
-     *
-     * Read off the index rather than from any list of words, for the reason
-     * renderings() is: a user's copy is theirs, and may be renamed, partial or
-     * organised for a language this package has never seen.
-     */
-    const holdsWord = labels.includes(folded);
-
     const scored: Candidate[] = [];
-    for (let i = 0; i < this.#entries.length; i++) {
-      const entry = this.#entries[i];
-      let best = scoreLabel(folded, labels[i]);
-      if (!holdsWord) {
-        const separated = separate(folded, labels[i]);
-        if (separated) best = Math.max(best, scoreLabel(folded, separated));
-      }
+    for (const entry of this.#entries) {
+      const label = foldGerman(entry.label);
+      let best = scoreLabel(folded, label);
+      const paired = pairApart(label);
+      if (paired) best = Math.max(best, scoreLabel(folded, paired));
       if (best >= 25) scored.push({ id: entry.path, label: entry.label, score: best });
     }
 
@@ -382,21 +373,14 @@ export class MetacomProvider implements SymbolProvider {
      * happened to list first.
      *
      * Label length is what answers "nicht" once the rewrite above has put the
-     * separated and the run-together spellings on the same rung: "nichtkein"
-     * is shorter than "nicht kauen", "nicht komisch" and every spelling of
-     * "nicht binaer", and the least embellished label is the word asked for.
-     * The name comparison under it is not a preference, it is determinism -
-     * two different labels of the same length used to be ordered by wherever
-     * the index happened to put them, which is the same arbitrariness the
-     * rendering rank exists to remove. Identical labels still tie here, and
-     * still fall through to the index order, because by then there is nothing
-     * left to tell them apart.
+     * pair on the same rung as the separated spellings: "nichtkein" is shorter
+     * than "nicht binaer" and than every SW variant of it, and the least
+     * embellished label is the word asked for.
      */
     return scored
       .sort((a, b) => b.score - a.score
         || this.#renderingRank(a.id) - this.#renderingRank(b.id)
-        || a.label.length - b.label.length
-        || a.label.localeCompare(b.label))
+        || a.label.length - b.label.length)
       .slice(0, 24);
   }
 
@@ -602,36 +586,39 @@ async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: Metacom
 const firstSegment = (path: string) => path.split('/')[0] ?? 'METACOM';
 
 /**
- * The label rewritten with the separator METACOM did not write, or null when
- * the query does not begin a word here. Both arguments are already folded.
+ * A run-together pair of negation words, split apart: `"nichtkein"` becomes
+ * `"nicht kein"`. Null for everything else, which is nearly everything.
  *
- * `separate('nicht', 'nichtkein')` is `'nicht kein'`, which scoreLabel then
- * reads the way it already reads "nicht binaer": the query, and then more.
+ * The label is already folded. scoreLabel then reads the result the way it
+ * already reads "nicht binaer" - the query, and then more - so the pair stops
+ * being punished for a slash a filename could not hold.
  *
- * Two things are refused, and they are the whole of the safety:
+ * What this refuses is the point of it:
  *
- *   A tail whose first word is shorter than MIN_TAIL is an ending rather than
- *   a word. "nichte" is a niece and "nichts" is "nothing"; neither is "nicht"
- *   written without a slash, and a search for negation that put a niece on top
- *   would be worse than the one this fixes. They keep the bare-prefix score the
- *   ladder already gave them and stay exactly where they were. So does
- *   "nichtok", whose two-letter tail is a real word this cannot tell from an
- *   ending - a miss, and the safe direction to miss in.
+ *   "nichtbinaer" is a compound, not a pair. "binaer" is not a negation word,
+ *   so no split is found and the label keeps the bare-prefix score the ladder
+ *   already gave it. The same goes for "nichtkauen" and "nichtkomisch", and
+ *   for "apfelsaft", which is not a way of writing "Apfel".
  *
- *   A tail that already starts with a separator needs nothing done to it.
- *   scoreLabel has been reading those correctly all along, and rewriting one
- *   would only hand it the same string twice.
+ *   "nichte" is a niece and "nichts" is "nothing". Neither "e" nor "s" is a
+ *   word at all, let alone a negation, so a search for negation cannot put
+ *   either of them above the symbol it is looking for.
+ *
+ * Both halves are checked, so the split reads the same from either side: a
+ * search for "kein" reaches "nichtkein" too, which it could only do as a bare
+ * substring before.
  */
-function separate(query: string, label: string): string | null {
-  if (!label.startsWith(query)) return null;
-  const tail = label.slice(query.length);
-  if (/^[\s\-_/]/.test(tail)) return null;
-  // The word that would start here, not everything after the query: METACOM
-  // has a `nichtok_dh`, and measuring the whole tail would call its five
-  // characters a word while the plain `nichtok` beside it stays a prefix. The
-  // question is what follows the query, and that ends at the next separator.
-  if (tail.split(/[\s\-_/]/, 1)[0].length < MIN_TAIL) return null;
-  return `${query} ${tail}`;
+function pairApart(label: string): string | null {
+  // A label that already carries a separator has nothing run together in it,
+  // and every pair is two short words - so this walks a handful of positions
+  // on a handful of labels rather than every index on every search.
+  if (label.length > 24 || /[\s\-_/]/.test(label)) return null;
+  for (let cut = 1; cut < label.length; cut++) {
+    const head = label.slice(0, cut);
+    const tail = label.slice(cut);
+    if (NEGATIONS.has(head) && NEGATIONS.has(tail)) return `${head} ${tail}`;
+  }
+  return null;
 }
 
 /**

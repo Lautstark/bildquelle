@@ -400,6 +400,7 @@ describe('the negation symbol, in the collection METACOM actually ships', () => 
   const STEMS = [
     'nicht_binaer', 'nicht_binaer2', 'nicht_binaer3', 'nicht_binaer4',
     'nicht_binaer_SW', 'nicht_binaer2_SW', 'nicht_binaer3_SW', 'nicht_binaer4_SW',
+    'nichtbinaer',   // the same compound run together, which vorlaut's picker names
     'nichte',        // a niece
     'nichtkauen',    // "nicht kauen"
     'nichtkein',     // "nicht/kein" - the one somebody searching "nicht" wants
@@ -444,24 +445,34 @@ describe('the negation symbol, in the collection METACOM actually ships', () => 
     /*
      * Named one at a time, because this is the property the fix is dangerous
      * without. Each of these is a word in its own right that happens to begin
-     * with "nicht", and each keeps the bare-prefix score the ladder always gave
-     * it. `nichtok` is a miss - "ok" is a real word, two letters long, and
-     * nothing here can tell those from an ending - and it is the safe
-     * direction to miss in.
+     * with "nicht" - a niece, "nothing", and three compounds - and each keeps
+     * the bare-prefix score the ladder always gave it.
+     *
+     * That 55 is a contract, not an implementation detail. vorlaut reads it as
+     * a grade and captions an answer whose best hit is below a whole word:
+     * "this collection has no picture of its own for nicht". An earlier
+     * version of this fix promoted anything with a word-sized tail, which took
+     * that caption away for the one search it was written for. Only a pair of
+     * negation words is rewritten now, and none of these is one.
      */
     const byLabel = await scores('nicht');
 
-    expect(byLabel.get('nichte')).toBe(55);    // a niece, not a negation
-    expect(byLabel.get('nichts')).toBe(55);    // "nothing"
+    expect(byLabel.get('nichte')).toBe(55);        // a niece, not a negation
+    expect(byLabel.get('nichts')).toBe(55);        // "nothing"
     expect(byLabel.get('nichtok')).toBe(55);
     expect(byLabel.get('nichtok SW')).toBe(55);
     expect(byLabel.get('nichtok dh')).toBe(55);
+    expect(byLabel.get('nichtkauen')).toBe(55);    // a compound, not a pair
+    expect(byLabel.get('nichtkomisch')).toBe(55);
+    // The one vorlaut's near-miss caption is written against. Separator or no
+    // separator, "nicht binaer" is a different word; run together it must stay
+    // below the whole-word rung, or the caption goes quiet for the search it
+    // exists for.
+    expect(byLabel.get('nichtbinaer')).toBe(55);
 
-    // And the ones that really are "nicht" plus a word are read as such, on
-    // the same rung as the spellings that carry a separator.
+    // Only the pair moves, and only onto the rung the separated spellings
+    // were already on.
     expect(byLabel.get('nichtkein')).toBe(70);
-    expect(byLabel.get('nichtkauen')).toBe(70);
-    expect(byLabel.get('nichtkomisch')).toBe(70);
     expect(byLabel.get('nicht binaer')).toBe(70);
   });
 
@@ -498,8 +509,16 @@ describe('the negation symbol, in the collection METACOM actually ships', () => 
     expect(new Set((await scores('nicht')).keys())).toEqual(new Set([
       'nicht binaer', 'nicht binaer SW', 'nicht binaer2 SW', 'nicht binaer3 SW',
       'nicht binaer4 SW', 'nichte', 'nichtkauen', 'nichtkein', 'nichtkomisch',
-      'nichtok', 'nichtok SW', 'nichtok dh', 'nichts',
+      'nichtok', 'nichtok SW', 'nichtok dh', 'nichts', 'nichtbinaer',
     ]));
+  });
+
+  it('reads the pair from either side', async () => {
+    // Both halves are checked, so the split is not a fact about the query. A
+    // search for "kein" reaches the same symbol, which as a bare substring of
+    // "nichtkein" it could only do at 25.
+    const byLabel = await scores('kein');
+    expect(byLabel.get('nichtkein')).toBe(60);
   });
 
   it('does not put a separator inside a German compound', async () => {
@@ -516,11 +535,12 @@ describe('the negation symbol, in the collection METACOM actually ships', () => 
       fileAt('METACOM_9/Essen/Apfelsaft.png'),
       fileAt('METACOM_9/Essen/Apfelbaum.png'),
     ]);
-    expect((await essen.search('Apfel')).map((h) => [h.score, h.label])).toEqual([
+    const hits = await essen.search('Apfel');
+    expect(hits.slice(0, 2).map((h) => [h.score, h.label])).toEqual([
       [100, 'Apfel'],
       [70, 'Apfel rot'],
-      [55, 'Apfelbaum'],
-      [55, 'Apfelsaft'],
     ]);
+    // The compounds stay on the rung below, whatever order they tie in.
+    expect(hits.slice(2).map((h) => h.score)).toEqual([55, 55]);
   });
 });
