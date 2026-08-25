@@ -262,7 +262,14 @@ chosen: in English, ARASAAC is the source that works.
 
 ### What lands in IndexedDB
 
-A database named `bildquelle`, alongside whatever the host keeps in its own:
+A database named `bildquelle`, alongside whatever the host keeps in its own.
+
+**It is shared between every consumer on the same origin.** bildhaft and vorlaut
+are both served from `lautstark.github.io`, so there is one database with two
+programs in it, each pinning its own version of this package. The open therefore
+takes whatever version it finds rather than a version of its own, and schema
+changes here are additive-only — see RELEASING.md, which has the outage that
+taught us.
 
 | Store | Contents |
 | --- | --- |

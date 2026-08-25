@@ -65,6 +65,38 @@ A licensing change is always major, whatever the diff size. Consumers inherit
 the behaviour described in the README without inheriting the README, and the
 major is the only signal that reaches them.
 
+### The database is shared, so a schema change is not just a schema change
+
+bildhaft and vorlaut are both served from `lautstark.github.io`. Same origin,
+one IndexedDB — so there is **one `bildquelle` database with two programs in
+it**, and each of them pins this package to an exact tag on its own schedule.
+The versions differ routinely, and a Pages deploy of one is not a deploy of the
+other.
+
+IndexedDB does not negotiate. Opening with a version lower than the stored one
+fails outright, so the app that pins the lower number is locked out of its own
+cache entirely — `search()` throws, which the contract says it must never do.
+
+This happened. `v1.6.0` bumped `DB_VERSION` to 2 to clear rows a new cache key
+had made unreachable. For about half an hour, anybody who opened vorlaut and
+then bildhaft found bildhaft unable to read anything. Both apps were correct;
+they simply disagreed by one integer.
+
+Since `v1.6.2` the open takes whatever version is there and adds any store it
+finds missing, so a copy meeting a newer database no longer fails. Two rules
+keep that true:
+
+- **Schema changes must be additive.** New stores are safe. Renaming a store or
+  changing a `keyPath` breaks every sibling that has not been redeployed, and
+  no care at the open can soften it.
+- **Change the data, not the schema.** The language-keyed cache — `de:apfel`
+  rather than `apfel` — needed no schema change at all. The version bump that
+  caused the outage was only there to purge stale rows that would have expired
+  on their own. Tidiness is not worth a coordinated two-repo deploy.
+
+A change that breaks either rule is a **major**, even when the exported API has
+not moved. It is the one kind of break that hits consumers who change nothing.
+
 ## Moving a consumer onto the range
 
 Changing a consumer's spec to `#semver:^1.0.0` and running `npm install` does

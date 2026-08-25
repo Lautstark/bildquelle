@@ -54,43 +54,99 @@ interface BildquelleDB extends DBSchema {
 }
 
 const DB_NAME = 'bildquelle';
-const DB_VERSION = 2;
+
+/**
+ * Every store this package keeps, and the key each one is written under.
+ *
+ * A list rather than four calls inside an upgrade, because it is now consulted
+ * twice: once to create a database that does not exist, and once to ask an
+ * existing one whether it is missing anything.
+ */
+const STORES = [
+  ['arasaacSearch', 'query'],
+  ['arasaacImages', 'id'],
+  ['metacomIndex', 'key'],
+  ['metacomHandles', 'key'],
+] as const;
 
 let dbPromise: Promise<IDBPDatabase<BildquelleDB>> | null = null;
 
+const create = (db: IDBPDatabase<BildquelleDB>): void => {
+  for (const [name, keyPath] of STORES) {
+    if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath });
+  }
+};
+
+const lacking = (db: IDBPDatabase<BildquelleDB>): boolean =>
+  STORES.some(([name]) => !db.objectStoreNames.contains(name));
+
+/*
+ * Opened without a version number, deliberately, and this is the whole of what
+ * that buys.
+ *
+ * This database is shared. bildhaft and vorlaut are both served from
+ * lautstark.github.io, which makes them one origin, which makes this one
+ * database with two programs in it - and each of them pins its own copy of this
+ * package to an exact tag, on its own schedule. So the two copies can disagree
+ * about the version, and IndexedDB does not negotiate: asking for a version
+ * lower than the stored one fails outright, and the program that asked is
+ * locked out of its own cache entirely.
+ *
+ * That is not hypothetical. It shipped. A schema bump went out in one app on
+ * 2026-08-25 and for about half an hour anybody who opened that app and then
+ * the other one found the second one unable to read anything - its search()
+ * threw, which this package's own contract says it must never do.
+ *
+ * Taking whatever is there cannot fail that way. An older copy meeting a newer
+ * database finds every store it knows about and works, because the rule below
+ * is that schemas only ever gain stores. A newer copy meeting an older database
+ * adds what it needs, one version above whatever it found.
+ *
+ * The rule this rests on, and the reason RELEASING.md now says so: **changes
+ * here must be additive.** Renaming a store or changing a keyPath breaks every
+ * sibling that has not been redeployed yet, and no amount of care at the open
+ * can soften that. Version-keying the data - `de:apfel` rather than `apfel` -
+ * is how the last such change was made without touching the schema at all, and
+ * is the pattern to copy.
+ */
+async function open(): Promise<IDBPDatabase<BildquelleDB>> {
+  const found = await openDB<BildquelleDB>(DB_NAME, undefined, {
+    // Fires only when there was no database at all; it arrives at version 1.
+    upgrade: create,
+    blocking: () => { void close(); },
+    terminated: () => { dbPromise = null; },
+  });
+
+  if (!lacking(found)) return found;
+
+  // Something we need is not here, so this is an older database than the code
+  // reading it. One version above whatever it turned out to be, rather than a
+  // constant, because the constant is exactly what could not be trusted.
+  const version = found.version + 1;
+  found.close();
+  return openDB<BildquelleDB>(DB_NAME, version, {
+    upgrade: create,
+    blocking: () => { void close(); },
+    terminated: () => { dbPromise = null; },
+  });
+}
+
+/* An old tab holding an earlier version open would otherwise leave a sibling's
+ * openDB pending forever, which presents to the user as symbols stuck on their
+ * spinner. */
+async function close(): Promise<void> {
+  const held = dbPromise;
+  dbPromise = null;
+  try {
+    (await held)?.close();
+  } catch {
+    // It never opened; there is nothing to hand back.
+  }
+}
+
 function getDB(): Promise<IDBPDatabase<BildquelleDB>> {
   if (!dbPromise) {
-    const opened = openDB<BildquelleDB>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, _newVersion, tx) {
-        if (oldVersion < 1) {
-          db.createObjectStore('arasaacSearch', { keyPath: 'query' });
-          db.createObjectStore('arasaacImages', { keyPath: 'id' });
-          db.createObjectStore('metacomIndex', { keyPath: 'key' });
-          db.createObjectStore('metacomHandles', { keyPath: 'key' });
-        }
-        /*
-         * Version 1 keyed a search on the bare word, from when there was one
-         * language and the key did not have to say which. Those rows are
-         * unreachable now - nothing will ever ask for "apfel" again, only for
-         * "de:apfel" - so they are dropped rather than left to sit until their
-         * thirty days are up. The images are not touched: a pictogram id means
-         * the same thing in every language, and re-fetching them would be the
-         * one genuinely expensive part of this.
-         */
-        if (oldVersion === 1) tx.objectStore('arasaacSearch').clear();
-      },
-      /* An old tab holding version n-1 open would otherwise leave openDB pending
-       * forever, which presents to the user as symbols stuck on their spinner. */
-      blocking() {
-        opened.then((db) => db.close()).catch(() => undefined);
-        dbPromise = null;
-      },
-      terminated() {
-        dbPromise = null;
-      },
-    });
-
-    dbPromise = opened.catch((err) => {
+    dbPromise = open().catch((err) => {
       // Let the next call try again rather than caching a rejected promise.
       dbPromise = null;
       throw err;
@@ -102,6 +158,19 @@ function getDB(): Promise<IDBPDatabase<BildquelleDB>> {
 /* -------------------------------------------------------------- arasaac --- */
 
 /** ARASAAC pictograms are public CC BY-NC-SA artwork, so caching bytes is fine. */
+/*
+ * Rows written before the key carried a language are keyed on the bare word,
+ * and nothing will ever ask for them again: every lookup now composes
+ * `de:apfel`. A schema bump used to clear them, and taking the version pinning
+ * out took that with it.
+ *
+ * They are left. The set is fixed and small - search results, never image bytes
+ * - and it cannot grow, because no code path writes a bare key any more. They
+ * are not even wholly dead: findLabel's second pass reads every row, and a
+ * label for a pictogram id is right in any language. `clearAllProviderData()`
+ * removes them along with everything else. Sweeping them would mean a scan on
+ * every page load to reclaim a few kilobytes once.
+ */
 const searchKey = (lang: LanguageCode, query: string) => `${lang}:${query}`;
 
 export const arasaacCache = {

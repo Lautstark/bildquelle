@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { openDB } from 'idb';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import * as api from '../src/index.js';
 import { MetacomProvider } from '../src/metacom.js';
+import { ArasaacProvider } from '../src/arasaac.js';
 import { dumpDatabase, fileAt, findBytes } from './helpers.js';
 
 /**
@@ -140,5 +142,67 @@ describe('needsAttention', () => {
     expect(api.needsAttention(
       { kind: 'loading', code: 'indexing', message: '' })).toBe(false);
     expect(api.needsAttention({ kind: 'ready' })).toBe(false);
+  });
+});
+
+/*
+ * The database is shared, and the two programs in it are versioned apart.
+ *
+ * bildhaft and vorlaut are both served from lautstark.github.io - one origin,
+ * one IndexedDB - and each pins its own copy of this package to an exact tag on
+ * its own schedule. So the copies disagree about the schema routinely, and
+ * IndexedDB does not negotiate: a pinned version lower than the stored one
+ * fails the open outright, and the program that asked is locked out of its own
+ * cache.
+ *
+ * That shipped on 2026-08-25. For about half an hour, opening one app and then
+ * the other left the second one throwing a VersionError out of search(), which
+ * this package's contract says must never throw. These are the tests that would
+ * have caught it.
+ *
+ * The two run in this order on purpose and share the database between them, the
+ * way the real ones share a browser: the first leaves a connection open, and the
+ * second upgrades underneath it. That is the `blocking` handler's whole job, so
+ * the ordering is part of what is under test rather than an accident of it.
+ */
+describe('a database two differently-versioned apps share', () => {
+  const STORES = ['arasaacSearch', 'arasaacImages', 'metacomIndex', 'metacomHandles'];
+
+  const answersNothing = () => vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(
+    { ok: true, status: 200, json: () => Promise.resolve([]) } as unknown as Response)));
+
+  /** Whatever a sibling on another release might have left behind. */
+  async function leaveBehind(version: number, stores: string[]): Promise<void> {
+    const db = await openDB('bildquelle', version, {
+      upgrade(db) {
+        for (const name of stores) {
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'key' });
+        }
+      },
+    });
+    db.close();
+  }
+
+  it('adds a store to a database older than the code reading it', async () => {
+    await leaveBehind(1, ['arasaacSearch']);
+    answersNothing();
+
+    await expect(new ArasaacProvider().search('olderdatabase')).resolves.toEqual([]);
+
+    const db = await openDB('bildquelle');
+    for (const name of STORES) {
+      expect(db.objectStoreNames.contains(name), `${name} should have been added`).toBe(true);
+    }
+    db.close();
+  });
+
+  it('opens one a newer sibling has already upgraded past it', async () => {
+    // The reproduction. A pinned version would ask for 2 and be refused; this
+    // asks for whatever is there. The connection the test above left open is
+    // what `blocking` has to let go of for the upgrade to land at all.
+    await leaveBehind(9, STORES);
+    answersNothing();
+
+    await expect(new ArasaacProvider().search('newersibling')).resolves.toEqual([]);
   });
 });
