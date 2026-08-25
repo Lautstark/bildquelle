@@ -21,6 +21,63 @@ describe('ArasaacProvider', () => {
     vi.useRealTimers();
   });
 
+  it('asks ARASAAC for the language it was told to search', async () => {
+    const fetchSpy = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse([])));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await new ArasaacProvider('en').search('language-endpoint');
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/pictograms/en/search/');
+
+    await new ArasaacProvider().search('language-endpoint-default');
+    // Unstated stays German: bildhaft says nothing and must keep what it had.
+    expect(String(fetchSpy.mock.calls[1]![0])).toContain('/pictograms/de/search/');
+  });
+
+  it('does not let a German answer stand in for an English one', async () => {
+    /*
+     * The failure this exists for is quiet. ARASAAC's German endpoint does not
+     * reject an English word - `/de/search/water` answers 200 with a
+     * water-transport sign - so a cache keyed on the bare word would have
+     * served that picture to an English reader for the full thirty days,
+     * looking exactly like a correct answer.
+     */
+    const german = vi.fn(() => Promise.resolve(jsonResponse([
+      { _id: 2273, keywords: [{ keyword: 'Wasserstraße' }] },
+    ])));
+    vi.stubGlobal('fetch', german);
+    const de = await new ArasaacProvider('de').search('sharedspelling');
+    expect(de.map((c) => c.id)).toEqual(['2273']);
+
+    const english = vi.fn(() => Promise.resolve(jsonResponse([
+      { _id: 2248, keywords: [{ keyword: 'water' }] },
+    ])));
+    vi.stubGlobal('fetch', english);
+    const en = await new ArasaacProvider('en').search('sharedspelling');
+
+    // It went and asked, rather than answering out of the German row.
+    expect(english).toHaveBeenCalledOnce();
+    expect(en.map((c) => c.id)).toEqual(['2248']);
+  });
+
+  it('keeps both languages, so switching back costs no request', async () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonResponse([
+      { _id: 77, keywords: [{ keyword: 'both' }] },
+    ])));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const provider = new ArasaacProvider('de');
+    await provider.search('keptbylanguage');
+    provider.setLanguage('en');
+    await provider.search('keptbylanguage');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    provider.setLanguage('de');
+    await provider.search('keptbylanguage');
+    // The German row was never evicted by the English one.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('is usable immediately, with no setup', () => {
     const arasaac = new ArasaacProvider();
     expect(arasaac.isReady()).toBe(true);

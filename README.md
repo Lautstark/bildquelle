@@ -184,7 +184,8 @@ re-requested per component.
 | --- | --- |
 | `getProvider(id)`, `arasaac`, `metacom`, `PROVIDER_IDS` | The registry, and the one instance of each provider. |
 | `SymbolProvider` | `status`, `isReady`, `search(query)`, `getImageUrl(id)`, `labelFor(id)`, `attribution`. |
-| `ArasaacProvider`, `ARASAAC_ATTRIBUTION` | The class, and the licence notice as text. |
+| `ArasaacProvider`, `ARASAAC_ATTRIBUTIONS` | The class, and the licence notice as text, per language. |
+| `LanguageCode`, `LANGUAGES`, `setSymbolLanguage(lang)`, `symbolLanguage()` | Which language sentences are read in and ARASAAC is searched in. See below. |
 | `MetacomProvider` | Adds `pickDirectory`, `useDirectoryHandle`, `useFileList`, `useZip`, `restore`, `requestPermission`, `rebuildIndex`, `forget`, `subscribe`, `rootName`, `symbolCount`, and the static `supportsPersistentPicker`. |
 | `attributionsFor(ids)` | The licence notices owed by a set of providers, deduplicated. |
 | `clearAllProviderData()` | Drops everything stored: caches, index, folder handle. For a host's "delete all my data". |
@@ -193,15 +194,63 @@ re-requested per component.
 `search` never throws — it returns `[]` and reflects the trouble in `status()`.
 
 A status carries a `code` as well as a `message`. Branch on the code; the
-message is a German default, kept because the app this came from is German, and
-it is not a shared package's business to decide the wording for a host that
-ships in more than one language.
+message is a default in the provider's own language, and it is not a shared
+package's business to decide the wording for a host that ships in more than
+one language.
 
 | `kind` | `code` |
 | --- | --- |
 | `needs-setup` | `no-folder`, `permission-needed` |
 | `loading` | `reading-folder`, `unpacking-zip`, `indexing` |
 | `error` | `no-images`, `read-failed`, `network` |
+
+## Language
+
+Two languages, `de` and `en`, and the choice reaches three separate things:
+
+```ts
+import { setSymbolLanguage, getProvider } from '@lautstark/bildquelle';
+
+setSymbolLanguage('en');
+await getProvider('arasaac').search('water');       // ARASAAC's English endpoint
+
+const { resolveText } = await import('@lautstark/bildquelle/english');
+```
+
+- **The endpoint.** ARASAAC keeps its keywords per language and the language is
+  part of the path. This was hardcoded to `de` until v1.6.0, and it failed
+  quietly rather than loudly: `/de/search/water` answers `200` with a
+  water-transport sign, because ARASAAC matches on tags and synsets too. An
+  English reader was not shown "no results" — they were shown the wrong picture.
+- **The pipeline.** `@lautstark/bildquelle/german` and
+  `@lautstark/bildquelle/english` are separate entry points, so a host carries
+  only the tables for the language it reads. They are not the same pipeline with
+  different data: German splits compounds and reassembles separable verbs,
+  English merges phrasal verbs and does neither. What the two must agree on
+  lives in `src/lang/`.
+- **The licence notice.** `attribution` follows the provider's language, because
+  CC BY-NC-SA is shown verbatim to whoever is reading.
+
+The cache is keyed by language, so the two never answer for each other and
+switching back and forth costs no extra requests.
+
+### English is the shallower of the two
+
+Not a translation of the German pipeline — a smaller one. German ships about
+8,000 lines of generated tables; English ships a rule-based lemmatiser and about
+200 lines of irregulars. English regular inflection really is rules, so that
+covers more than the ratio suggests, but one rung is missing outright: there is
+**no synonym table**, so an English collection holding only "bicycle" will not
+answer a search for "bike". That is a gap rather than a decision, and the
+sequence for closing it is to measure coverage on real input first.
+
+### METACOM is German whatever this is set to
+
+METACOM is a German product, and a symbol's id *is* the filename in the user's
+own licensed folder. A collection of `trinken.png` and `aufräumen.png` matches
+German words no matter what `setSymbolLanguage` was told, so `setSymbolLanguage`
+does not touch it. A host offering English should say so where METACOM is
+chosen: in English, ARASAAC is the source that works.
 
 ### Browser support for METACOM
 

@@ -10,11 +10,8 @@ import otherTable from './data/lemmas-other.js';
 const NOUNS = nounTable as Record<string, string>;
 const OTHERS = otherTable as Record<string, string>;
 
-export interface LemmaGuess {
-  lemma: string;
-  /** 1 = dictionary hit, lower = rule-derived guess. */
-  confidence: number;
-}
+export type { LemmaGuess } from '../lang/shared.js';
+import type { LemmaGuess } from '../lang/shared.js';
 
 const UMLAUT_BACK: Record<string, string> = { ä: 'a', ö: 'o', ü: 'u' };
 

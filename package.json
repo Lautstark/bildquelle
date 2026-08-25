@@ -2,7 +2,7 @@
   "name": "@lautstark/bildquelle",
   "version": "1.5.0",
   "type": "module",
-  "description": "Symbol search for German AAC tools: ARASAAC's public API and the user's own licensed METACOM folder, behind one browser-only interface.",
+  "description": "Symbol search for German and English AAC tools: ARASAAC's public API and the user's own licensed METACOM folder, behind one browser-only interface.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -30,6 +30,10 @@
     "./german": {
       "types": "./dist/german/index.d.ts",
       "default": "./dist/german/index.js"
+    },
+    "./english": {
+      "types": "./dist/english/index.d.ts",
+      "default": "./dist/english/index.js"
     }
   },
   "files": [
@@ -43,7 +47,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "prepare": "npm run build && npm run build:browser",
-    "build:browser": "esbuild src/index.ts src/german/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap",
+    "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap",
     "preversion": "npm run typecheck && npm test && npm run build && npm run build:browser"
   },
   "dependencies": {

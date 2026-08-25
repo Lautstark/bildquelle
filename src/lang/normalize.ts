@@ -1,3 +1,13 @@
+/*
+ * Reading a written line, before any language gets a say.
+ *
+ * Neither function below knows a German word from an English one: one strips
+ * punctuation and folds case, the other splits on newlines. They were in
+ * german/ because German was the only pipeline; keeping them there would have
+ * meant an English host importing a module named for the wrong language, or a
+ * second copy that drifts on the first edit.
+ */
+
 /** Punctuation that never carries meaning for us. Keeps letters, digits, hyphens. */
 const PUNCT = /[.,!?;:„“”"'`´()\[\]{}…»«–—*_/\\]/g;
 

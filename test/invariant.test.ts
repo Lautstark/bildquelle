@@ -89,8 +89,11 @@ describe('the METACOM licensing invariant', () => {
 describe('the public API surface', () => {
   it('exports exactly what is intended', () => {
     expect(Object.keys(api).sort()).toEqual([
-      'ARASAAC_ATTRIBUTION',
+      'ARASAAC_ATTRIBUTIONS',
       'ArasaacProvider',
+      // Every language a sentence can be read in. A closed union, so a host
+      // cannot ask for one that has an ARASAAC endpoint but no lemmatiser.
+      'LANGUAGES',
       'MetacomProvider',
       'PROVIDER_IDS',
       'arasaac',
@@ -104,6 +107,10 @@ describe('the public API surface', () => {
       // that knows what the states mean. Reaching it does not reach a symbol.
       'needsAttention',
       'scoreLabel',
+      // One call rather than a walk over the providers, so a host switching
+      // language cannot switch half of them.
+      'setSymbolLanguage',
+      'symbolLanguage',
     ].sort());
   });
 });

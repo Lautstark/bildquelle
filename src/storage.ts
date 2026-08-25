@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Candidate } from './types.js';
+import type { Candidate, LanguageCode } from './types.js';
 
 /**
  * Browser-local storage for both providers, in a database this package owns.
@@ -26,7 +26,15 @@ export interface MetacomEntry {
 }
 
 interface BildquelleDB extends DBSchema {
-  /** ARASAAC search results, cached so repeated lookups cost no network. */
+  /**
+   * ARASAAC search results, cached so repeated lookups cost no network.
+   *
+   * The key carries the language: `de:apfel`, `en:apple`. It has to, because
+   * the same spelling is a different question in each - ARASAAC's German
+   * endpoint answers "water" with a water-transport sign, and a cache keyed
+   * on the bare word would have served that to an English reader for a month.
+   * Composed in one place, by `searchKey` below, rather than by each caller.
+   */
   arasaacSearch: { key: string; value: { query: string; candidates: Candidate[]; ts: number } };
   /** ARASAAC image blobs, cached so a session works offline once fetched. */
   arasaacImages: { key: string; value: { id: string; blob: Blob; ts: number } };
@@ -44,18 +52,30 @@ interface BildquelleDB extends DBSchema {
 }
 
 const DB_NAME = 'bildquelle';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<BildquelleDB>> | null = null;
 
 function getDB(): Promise<IDBPDatabase<BildquelleDB>> {
   if (!dbPromise) {
     const opened = openDB<BildquelleDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        db.createObjectStore('arasaacSearch', { keyPath: 'query' });
-        db.createObjectStore('arasaacImages', { keyPath: 'id' });
-        db.createObjectStore('metacomIndex', { keyPath: 'key' });
-        db.createObjectStore('metacomHandles', { keyPath: 'key' });
+      upgrade(db, oldVersion, _newVersion, tx) {
+        if (oldVersion < 1) {
+          db.createObjectStore('arasaacSearch', { keyPath: 'query' });
+          db.createObjectStore('arasaacImages', { keyPath: 'id' });
+          db.createObjectStore('metacomIndex', { keyPath: 'key' });
+          db.createObjectStore('metacomHandles', { keyPath: 'key' });
+        }
+        /*
+         * Version 1 keyed a search on the bare word, from when there was one
+         * language and the key did not have to say which. Those rows are
+         * unreachable now - nothing will ever ask for "apfel" again, only for
+         * "de:apfel" - so they are dropped rather than left to sit until their
+         * thirty days are up. The images are not touched: a pictogram id means
+         * the same thing in every language, and re-fetching them would be the
+         * one genuinely expensive part of this.
+         */
+        if (oldVersion === 1) tx.objectStore('arasaacSearch').clear();
       },
       /* An old tab holding version n-1 open would otherwise leave openDB pending
        * forever, which presents to the user as symbols stuck on their spinner. */
@@ -80,23 +100,43 @@ function getDB(): Promise<IDBPDatabase<BildquelleDB>> {
 /* -------------------------------------------------------------- arasaac --- */
 
 /** ARASAAC pictograms are public CC BY-NC-SA artwork, so caching bytes is fine. */
+const searchKey = (lang: LanguageCode, query: string) => `${lang}:${query}`;
+
 export const arasaacCache = {
-  async readSearch(query: string) {
-    return (await getDB()).get('arasaacSearch', query);
+  async readSearch(lang: LanguageCode, query: string) {
+    return (await getDB()).get('arasaacSearch', searchKey(lang, query));
   },
 
-  async writeSearch(query: string, candidates: Candidate[]): Promise<void> {
-    await (await getDB()).put('arasaacSearch', { query, candidates, ts: Date.now() });
+  async writeSearch(
+    lang: LanguageCode, query: string, candidates: Candidate[],
+  ): Promise<void> {
+    await (await getDB()).put(
+      'arasaacSearch', { query: searchKey(lang, query), candidates, ts: Date.now() });
   },
 
-  /** Scans cached result sets for a symbol id, for references restored from storage. */
-  async findLabel(id: string): Promise<string | null> {
+  /**
+   * Scans cached result sets for a symbol id, for references restored from
+   * storage.
+   *
+   * The reader's own language is scanned first and everything else after, and
+   * the fallback is the point: a board saved in German and opened in English
+   * holds ids whose only cached label is a German one. A German word under an
+   * English symbol is worse than nothing to look at and better than nothing to
+   * act on - it still names the right picture. Returning null instead would
+   * leave the key blank.
+   */
+  async findLabel(id: string, lang?: LanguageCode): Promise<string | null> {
     const db = await getDB();
-    let cursor = await db.transaction('arasaacSearch').store.openCursor();
-    while (cursor) {
-      const hit = cursor.value.candidates.find((c) => c.id === id);
-      if (hit) return hit.label;
-      cursor = await cursor.continue();
+    const passes = lang
+      ? [IDBKeyRange.bound(`${lang}:`, `${lang}:\uffff`), undefined]
+      : [undefined];
+    for (const range of passes) {
+      let cursor = await db.transaction('arasaacSearch').store.openCursor(range);
+      while (cursor) {
+        const hit = cursor.value.candidates.find((c) => c.id === id);
+        if (hit) return hit.label;
+        cursor = await cursor.continue();
+      }
     }
     return null;
   },

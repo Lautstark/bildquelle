@@ -9,6 +9,25 @@
  */
 export type ProviderId = 'arasaac' | 'metacom';
 
+/**
+ * The languages this package can read a sentence in and search ARASAAC in.
+ *
+ * A closed union rather than a plain string, and it is the same union in three
+ * places on purpose: the endpoint ARASAAC is asked, the pipeline that turns a
+ * sentence into words, and the licence notice shown underneath the result. A
+ * host that could pass "fr" here would get an ARASAAC endpoint that answers,
+ * a German lemmatiser that does not, and no way to tell from the outside which
+ * half was missing.
+ *
+ * METACOM is not in this picture. It is a German product with German
+ * filenames, so a collection the user owns matches German words whatever this
+ * is set to - see the README.
+ */
+export type LanguageCode = 'de' | 'en';
+
+/** Every language above, for hosts that offer a choice. */
+export const LANGUAGES: readonly LanguageCode[] = ['de', 'en'];
+
 /** A symbol offered for a query. `id` is provider-local and opaque to callers. */
 export interface Candidate {
   id: string;

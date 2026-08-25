@@ -10,6 +10,7 @@
 
 export type {
   Candidate,
+  LanguageCode,
   ProviderId,
   ProviderListener,
   ProviderStatus,
@@ -17,8 +18,10 @@ export type {
 } from './types.js';
 /** Which provider states are somebody's to act on. See the note on it. */
 export { needsAttention } from './types.js';
+/** Every language a sentence can be read in and ARASAAC searched in. */
+export { LANGUAGES } from './types.js';
 
-export { ArasaacProvider, ARASAAC_ATTRIBUTION } from './arasaac.js';
+export { ArasaacProvider, ARASAAC_ATTRIBUTIONS } from './arasaac.js';
 export { MetacomProvider } from './metacom.js';
 export {
   arasaac,
@@ -27,5 +30,7 @@ export {
   getProvider,
   metacom,
   PROVIDER_IDS,
+  setSymbolLanguage,
+  symbolLanguage,
 } from './registry.js';
 export { foldGerman, scoreLabel } from './text.js';
