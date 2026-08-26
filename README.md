@@ -290,6 +290,56 @@ npm run build
 The tests run against a real in-memory IndexedDB rather than a mock, so the
 invariant tests can inspect what actually got written.
 
+### The German tables are generated
+
+`src/german/data/` is not written by hand. It is expanded from the compact,
+human-editable word lists in `scripts/lexicon-seeds.mjs`:
+
+```
+node scripts/build-lexicon.mjs
+```
+
+The output is committed, so `npm run build` has no codegen step and a consumer
+never runs the generator. Edit the seeds, re-run it, and commit what changes.
+
+The generator lived in bildhaft until the German pipeline moved here, and it
+followed the tables it writes. A generator one repository away from its output
+is a generator nobody runs, and the tables had already drifted out of reach of
+the only thing that could regenerate them.
+
+English has no equivalent: it is a rule-based lemmatiser over roughly 200 lines
+of irregulars, and there is nothing to expand.
+
+### Measuring coverage
+
+Two scripts, and the difference between them is the point.
+
+```
+npm run build && node scripts/lexicon-coverage.mjs --verbose
+```
+
+German only, no network. Asks what share of the content words in
+`scripts/corpus.de.txt` the lexicon knows outright rather than having to guess
+at by suffix — which is exactly what editing the seeds changes, and nothing
+else. This is the loop for growing the vocabulary: `--verbose` lists the misses,
+and those are what to seed next.
+
+```
+node scripts/coverage.mjs
+```
+
+Both languages, and it does hit ARASAAC. Asks the question a family actually has
+— how many words in a real sentence come back with a picture — which mixes the
+pipeline together with what the collection happens to draw. That is deliberate:
+from the user's side, a bad lemma and a missing pictogram are the same empty
+square. Answers are cached in `scripts/.coverage-cache.json`, which is not
+committed. See the header of each script for the rest.
+
+Both corpora are line-for-line translations of each other, so German serves as
+the control for English. The corpora were also used to choose the German
+vocabulary, so treat that number as a floor rather than a score: judge a change
+by writing fresh sentences that did not inform it.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE). The licence covers this code. It says nothing about
