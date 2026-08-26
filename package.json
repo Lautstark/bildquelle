@@ -1,6 +1,6 @@
 {
   "name": "@lautstark/bildquelle",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "type": "module",
   "description": "Symbol search for German and English AAC tools: ARASAAC's public API and the user's own licensed METACOM folder, behind one browser-only interface.",
   "license": "MIT",
