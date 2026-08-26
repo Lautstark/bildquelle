@@ -24,7 +24,7 @@ export const WEAK_VERBS = [
   'klingeln','knüllen','stapeln','sortieren','abtrocknen','abwaschen','einschenken','umrühren','schälen','grillen',
   'rösten','kühlen','wärmen','gähnen','schnarchen','aufwachen','ausruhen','entspannen','radeln','rodeln',
   'planschen','spritzen','melken','pflücken','verstecken','vertragen','zaubern','verwandeln','retten','bewachen',
-
+  'aufhängen',
 ];
 
 /** Irregular verbs: infinitive -> the forms that matter for lookup. */
@@ -115,6 +115,7 @@ export const STRONG_VERBS = {
   'aufheben': ['hebe auf','hebst auf','hebt auf','hob auf','aufgehoben','aufheben'],
   'aufstehen': ['stehe auf','stehst auf','steht auf','stand auf','aufgestanden','aufstehen'],
   'einschlafen': ['schlafe ein','schläfst ein','schläft ein','schlief ein','eingeschlafen','einschlafen'],
+  'vorlesen': ['vorlese','vorliest','vorlest','vorlesen','vorlas','vorlasen','vorgelesen'],
   'wachsen ': [],
 };
 
