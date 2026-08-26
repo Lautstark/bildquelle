@@ -1,0 +1,78 @@
+# The German corpus, line for line, in the English somebody would actually type.
+#
+# A translation rather than a fresh list on purpose. A corpus written from
+# scratch would be the words whoever wrote it happened to think of, and the two
+# numbers would then differ for that reason as much as for any real one. Same
+# concepts in both files means a difference in the result is a difference in
+# the pipeline or in what ARASAAC holds, which is the only thing worth
+# measuring.
+#
+# British spelling throughout, chosen and not mixed, so that a miss is a miss
+# rather than a dialect. One sentence per line.
+I want to eat an apple
+Please clean up your room
+We drink apple juice at the playground
+The dog is lying under the table
+Please put on your shoes
+I have a tummy ache
+I feel sick
+I need a plaster
+Where does it hurt
+Are you thirsty
+I am tired and want to sleep
+When are we going home
+Today is Monday
+Tomorrow we are going to Grandma
+At the weekend we go swimming
+It is raining outside
+The sun is shining
+In winter snow falls
+Put on your jacket it is cold
+Please wash your hands
+Brush your teeth
+Sit down on the chair
+Close the window
+I am sad
+I am happy
+I am afraid of the dog
+That makes me angry
+Are you excited
+I am proud of you
+The mouse goes into the forest
+Here comes a fox
+The fox is hungry
+The owl sits on the branch
+The snake crawls through the grass
+The monster has big teeth
+The princess lives in a castle
+The knight fights the dragon
+The witch stirs her cauldron
+The king wears a crown
+Once upon a time there was a little bear
+I am packing my school bag
+We have break in the playground
+The teacher reads a story
+I am drawing a picture with crayons
+Where is my eraser
+After gym we get changed
+The bus is coming soon
+We wait at the bus stop
+I want to swing one more time
+May I do the puzzle
+My teddy sleeps in the bed
+We build a tower out of blocks
+The baby is crying
+Mum is cooking noodles
+The plate is empty
+I do not want soup
+Can you help me
+I can do it alone
+That is mine
+We share the chocolate
+Sorry that was an accident
+Thank you for the present
+Happy birthday
+The vacuum cleaner is loud
+Hang up the washing
+Throw that in the bin
+The spoon is in the drawer
