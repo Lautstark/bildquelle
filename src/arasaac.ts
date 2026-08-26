@@ -18,6 +18,30 @@ import type { Candidate, LanguageCode, ProviderStatus, SymbolProvider } from './
 const API = (lang: LanguageCode) => `https://api.arasaac.org/v1/pictograms/${lang}`;
 const IMAGE = (id: string) => `https://static.arasaac.org/pictograms/${id}/${id}_500.png`;
 
+/*
+ * The same pictogram drawn in greyscale, which is a different *host* and not a
+ * parameter on the one above.
+ *
+ * `?color=false` on the static URL is ignored - byte-identical to the plain
+ * request, measured rather than assumed - because static.arasaac.org serves
+ * pre-rendered files and knows nothing about rendering options. The API host
+ * renders on demand, and that is where the option is honoured: for id 2317 the
+ * two differ 6237 bytes to 14108, and 19 of 19 visible palette entries are
+ * greyscale against 9 of 31.
+ *
+ * Worth a method of its own rather than a flag on getImageUrl(), because
+ * monochrome is ARASAAC's own idea. METACOM ships a black-and-white file beside
+ * nearly every symbol - `haus4SW` beside `haus4` - so asking that provider for
+ * "the greyscale one" is asking for a different symbol, not a different
+ * rendering of one. A flag on the shared interface would have to mean both.
+ *
+ * What wants it is a key drawn light-on-dark: a host maps luminance onto two
+ * tones, and that mapping only holds on a greyscale source. A coloured
+ * pictogram put through it comes out tinted.
+ */
+const MONO_IMAGE = (id: string) =>
+  `https://api.arasaac.org/api/pictograms/${id}?download=false&color=false&resolution=500`;
+
 /**
  * The licence notice, per language. CC BY-NC-SA requires it wherever the
  * pictograms appear — on screen and on anything printed.
@@ -75,8 +99,11 @@ export class ArasaacProvider implements SymbolProvider {
   /*
    * Keyed by language, all three of them, because the same string means a
    * different question per language and these are consulted before the network
-   * is. `#objectUrls` is the exception below and is keyed by id alone: a
-   * pictogram id is a picture, and a picture is not translated.
+   * is. `#objectUrls` is the exception below and carries no language: a
+   * pictogram id is a picture, and a picture is not translated. Its key is the
+   * cache key rather than the id, because one id has two pictures - the
+   * coloured one and the greyscale one - and they are told apart by the `:sw`
+   * suffix getMonochromeImageUrl() files its own under.
    */
   #objectUrls = new Map<string, string>();
   #inFlight = new Map<string, Promise<Candidate[]>>();
@@ -211,30 +238,50 @@ export class ArasaacProvider implements SymbolProvider {
   }
 
   async getImageUrl(id: string): Promise<string | null> {
-    const cachedUrl = this.#objectUrls.get(id);
+    return this.#imageUrl(id, IMAGE(id));
+  }
+
+  /**
+   * The greyscale rendering of the same pictogram - see MONO_IMAGE.
+   *
+   * Cached under a key of its own, `<id>:sw`, because the two are different
+   * pictures of one id and a single row would hand back whichever was asked
+   * for first. Rows rather than stores: the database is shared with a sibling
+   * app that pins its own version of this package, so a new key is data and a
+   * new store would be a schema change - see RELEASING.md.
+   */
+  async getMonochromeImageUrl(id: string): Promise<string | null> {
+    return this.#imageUrl(`${id}:sw`, MONO_IMAGE(id));
+  }
+
+  /** One picture, from memory, then from the cache, then from the network. The
+   *  two above differ only in which key they file it under and which URL they
+   *  ask for. */
+  async #imageUrl(key: string, remote: string): Promise<string | null> {
+    const cachedUrl = this.#objectUrls.get(key);
     if (cachedUrl) return cachedUrl;
 
-    const stored = await arasaacCache.readImage(id);
+    const stored = await arasaacCache.readImage(key);
     if (stored) {
       const url = URL.createObjectURL(stored);
-      this.#objectUrls.set(id, url);
+      this.#objectUrls.set(key, url);
       return url;
     }
 
     try {
-      const res = await fetch(IMAGE(id));
+      const res = await fetch(remote);
       // A non-OK response is often transient (rate limiting, a 5xx). Hand back the
       // remote URL rather than null: the <img> can still try, and can report a real
       // failure through onError instead of leaving a spinner up forever.
-      if (!res.ok) return IMAGE(id);
+      if (!res.ok) return remote;
       const blob = await res.blob();
-      await arasaacCache.writeImage(id, blob);
+      await arasaacCache.writeImage(key, blob);
       const url = URL.createObjectURL(blob);
-      this.#objectUrls.set(id, url);
+      this.#objectUrls.set(key, url);
       return url;
     } catch {
       // Fall back to the remote URL; the browser may still have it in HTTP cache.
-      return IMAGE(id);
+      return remote;
     }
   }
 

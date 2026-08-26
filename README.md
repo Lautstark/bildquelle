@@ -184,7 +184,7 @@ re-requested per component.
 | --- | --- |
 | `getProvider(id)`, `arasaac`, `metacom`, `PROVIDER_IDS` | The registry, and the one instance of each provider. |
 | `SymbolProvider` | `status`, `isReady`, `search(query)`, `getImageUrl(id)`, `labelFor(id)`, `attribution`. |
-| `ArasaacProvider`, `ARASAAC_ATTRIBUTIONS` | The class, and the licence notice as text, per language. |
+| `ArasaacProvider`, `ARASAAC_ATTRIBUTIONS` | The class, and the licence notice as text, per language. Adds `getMonochromeImageUrl(id)`, ARASAAC's own greyscale rendering of a pictogram — for a key drawn light-on-dark, where mapping luminance onto two tones only holds on a greyscale source. Not on `SymbolProvider`: METACOM ships a separate black-and-white *symbol* (`haus4SW` beside `haus4`) rather than a rendering option, so the two sources cannot answer one question. |
 | `LanguageCode`, `LANGUAGES`, `setSymbolLanguage(lang)`, `symbolLanguage()` | Which language sentences are read in and ARASAAC is searched in. See below. |
 | `MetacomProvider` | Adds `pickDirectory`, `useDirectoryHandle`, `useFileList`, `useZip`, `restore`, `requestPermission`, `rebuildIndex`, `forget`, `subscribe`, `rootName`, `symbolCount`, and the static `supportsPersistentPicker`. |
 | `attributionsFor(ids)` | The licence notices owed by a set of providers, deduplicated. |

@@ -178,6 +178,48 @@ describe('ArasaacProvider', () => {
       .toBe('https://static.arasaac.org/pictograms/8124/8124_500.png');
   });
 
+  it('asks the API host, not the static one, for the greyscale rendering', async () => {
+    // The whole of why the method exists: `?color=false` on the static URL is
+    // ignored, because that host serves pre-rendered files. Only the API host
+    // renders on demand.
+    const fetchSpy = vi.fn(() => Promise.resolve(
+      { ok: true, status: 200, blob: () => Promise.resolve(new Blob(['sw'])) } as unknown as Response,
+    ));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    expect(await new ArasaacProvider().getMonochromeImageUrl('6964')).toMatch(/^blob:/);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.arasaac.org/api/pictograms/6964?download=false&color=false&resolution=500');
+  });
+
+  it('keeps the two renderings of one id apart in the cache', async () => {
+    // One row for both would hand back whichever was asked for first, and the
+    // coloured pictogram put through a two-tone mapping comes out tinted.
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      seen.push(url);
+      return Promise.resolve(
+        { ok: true, status: 200, blob: () => Promise.resolve(new Blob([url])) } as unknown as Response);
+    }));
+
+    await new ArasaacProvider().getImageUrl('2317');
+    await new ArasaacProvider().getMonochromeImageUrl('2317');
+    // A third and a fourth ask are answered from the cache, one row each.
+    await new ArasaacProvider().getImageUrl('2317');
+    await new ArasaacProvider().getMonochromeImageUrl('2317');
+
+    expect(seen).toEqual([
+      'https://static.arasaac.org/pictograms/2317/2317_500.png',
+      'https://api.arasaac.org/api/pictograms/2317?download=false&color=false&resolution=500',
+    ]);
+  });
+
+  it('falls back to the API URL when the greyscale request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 503 } as unknown as Response)));
+    expect(await new ArasaacProvider().getMonochromeImageUrl('8125'))
+      .toBe('https://api.arasaac.org/api/pictograms/8125?download=false&color=false&resolution=500');
+  });
+
   it('recovers a label for a symbol restored from storage', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse([
       { _id: 40, keywords: [{ keyword: 'Katze' }] },
