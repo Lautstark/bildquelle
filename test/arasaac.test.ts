@@ -140,7 +140,9 @@ describe('ArasaacProvider', () => {
 
     const arasaac = new ArasaacProvider();
     expect(await arasaac.search('Straßenbahn')).toEqual([]);
-    expect(arasaac.status()).toEqual({ kind: 'error', code: 'network', message: 'offline' });
+    // `detail` and not a sentence: it is what the network said, for a product
+    // to show beside its own translation of `code` rather than instead of one.
+    expect(arasaac.status()).toEqual({ kind: 'error', code: 'network', detail: 'offline' });
   });
 
   it('coalesces concurrent lookups of the same word', async () => {

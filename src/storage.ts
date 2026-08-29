@@ -109,26 +109,57 @@ const lacking = (db: IDBPDatabase<BildquelleDB>): boolean =>
  * is how the last such change was made without touching the schema at all, and
  * is the pattern to copy.
  */
+/**
+ * How many times the reopen below will try before giving up.
+ *
+ * It loops because the gap between `close()` and the reopen is a real one and
+ * the sibling on the other side of it is another program: it can take the very
+ * version we were about to ask for, and then our open finds that version
+ * already current, does not fire `upgrade`, and hands back a database still
+ * missing the store we opened it to add. The next `get()` throws — which is
+ * precisely the failure this whole file exists to prevent, arrived at by a
+ * narrower road.
+ *
+ * Four, because each pass is one version and the loop only repeats while a
+ * sibling keeps winning the same race; two programs cannot plausibly do that
+ * four times running. A bound rather than `while (lacking)` so that a database
+ * we can genuinely never fix ends as a named error instead of a spin.
+ */
+const REOPEN_TRIES = 4;
+
 async function open(): Promise<IDBPDatabase<BildquelleDB>> {
-  const found = await openDB<BildquelleDB>(DB_NAME, undefined, {
+  let db = await openDB<BildquelleDB>(DB_NAME, undefined, {
     // Fires only when there was no database at all; it arrives at version 1.
     upgrade: create,
     blocking: () => { void close(); },
     terminated: () => { dbPromise = null; },
   });
 
-  if (!lacking(found)) return found;
+  for (let tries = 0; lacking(db) && tries < REOPEN_TRIES; tries += 1) {
+    // Something we need is not here, so this is an older database than the code
+    // reading it. One version above whatever it turned out to be, rather than a
+    // constant, because the constant is exactly what could not be trusted —
+    // and read again on every pass, for the same reason: a sibling that beat us
+    // to it has moved the number since we last looked.
+    const version = db.version + 1;
+    db.close();
+    db = await openDB<BildquelleDB>(DB_NAME, version, {
+      upgrade: create,
+      blocking: () => { void close(); },
+      terminated: () => { dbPromise = null; },
+    });
+  }
 
-  // Something we need is not here, so this is an older database than the code
-  // reading it. One version above whatever it turned out to be, rather than a
-  // constant, because the constant is exactly what could not be trusted.
-  const version = found.version + 1;
-  found.close();
-  return openDB<BildquelleDB>(DB_NAME, version, {
-    upgrade: create,
-    blocking: () => { void close(); },
-    terminated: () => { dbPromise = null; },
-  });
+  if (lacking(db)) {
+    // Named, and thrown here rather than left for the first get(). A caller
+    // cannot do anything about either, but one of them says what happened.
+    db.close();
+    throw new Error(
+      `The ${DB_NAME} database is missing stores this copy needs and could not add them `
+      + `in ${REOPEN_TRIES} attempts. Another program on this origin may be upgrading it.`,
+    );
+  }
+  return db;
 }
 
 /* An old tab holding an earlier version open would otherwise leave a sibling's

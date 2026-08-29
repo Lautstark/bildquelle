@@ -144,7 +144,7 @@ export class ArasaacProvider implements SymbolProvider {
 
   status(): ProviderStatus {
     return this.#lastError
-      ? { kind: 'error', code: 'network', message: this.#lastError }
+      ? { kind: 'error', code: 'network', detail: this.#lastError }
       : { kind: 'ready' };
   }
 

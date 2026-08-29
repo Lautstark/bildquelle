@@ -37,19 +37,44 @@ export interface Candidate {
 }
 
 /**
- * Why a provider is not usable, and a sentence saying so.
+ * Why a provider is not usable, as something to branch on rather than to print.
  *
- * `code` is the part a host should branch on. `message` is a German default,
- * because the app this came from is German — but vorlaut ships in German *and*
- * English through a table of its own, so a shared package cannot be the one
- * deciding the wording. Show `message` if it suits you; translate from `code`
- * if it does not.
+ * **This package returns ids and shapes, never words** — the rule
+ * `@lautstark/sicherung` already keeps in `actionsFor` and `lineFor`, and the
+ * one this type broke until 2.0.0. It used to carry `message`, a German
+ * sentence offered as a default, with a comment inviting a host to "show
+ * `message` if it suits you; translate from `code` if it does not."
+ *
+ * Both consumers took it at its word and they took it differently. vorlaut
+ * never read `message` at all. bildhaft read it at three sites, so a reader who
+ * had set bildhaft to English was told „Ordner wird gelesen …" — and nothing in
+ * bildhaft could fix that, because the words were ours. A default that is only
+ * right for one of two languages is not a convenience, it is a trap with a
+ * comment on it, and the comment is what made it feel handled.
+ *
+ * So the sentence is gone and `code` is the whole answer. Every state a
+ * provider can be in is one of the eight below, and a product that has a
+ * translation table already has somewhere to put eight strings.
  */
 export type ProviderStatus =
   | { kind: 'ready' }
-  | { kind: 'needs-setup'; code: NeedsSetup; message: string }
-  | { kind: 'loading'; code: Loading; message: string }
-  | { kind: 'error'; code: Failed; message: string };
+  | { kind: 'needs-setup'; code: NeedsSetup }
+  | { kind: 'loading'; code: Loading }
+  | {
+    kind: 'error';
+    code: Failed;
+    /**
+     * What the browser or the network said, untranslated and unwrapped.
+     *
+     * Not a sentence to show — it is whatever `Error.message` happened to hold,
+     * in whatever language the platform chose, and it exists because the two
+     * paths that set it (a folder that would not read, a request that did not
+     * answer) carry information no enum can. Absent where there is none. A
+     * product that shows it should show it *beside* its own translation of
+     * `code`, never instead of one.
+     */
+    detail?: string;
+  };
 
 /** No folder has been chosen yet, or the browser wants access confirmed again. */
 export type NeedsSetup = 'no-folder' | 'permission-needed';

@@ -65,7 +65,7 @@ export class MetacomProvider implements SymbolProvider {
   #rootName = '';
   #preferred: string | null = null;
   #status: ProviderStatus =
-    { kind: 'needs-setup', code: 'no-folder', message: 'Noch kein METACOM-Ordner ausgewählt.' };
+    { kind: 'needs-setup', code: 'no-folder' };
   #listeners = new Set<ProviderListener>();
 
   subscribe(listener: ProviderListener): () => void {
@@ -195,14 +195,13 @@ export class MetacomProvider implements SymbolProvider {
     this.#setStatus({
       kind: 'needs-setup',
       code: 'permission-needed',
-      message: 'Zugriff auf den METACOM-Ordner muss erneut bestätigt werden.',
     });
     return false;
   }
 
   /** Firefox/Safari path: <input type="file" webkitdirectory>. Session-only. */
   async useFileList(fileList: FileList | File[]): Promise<void> {
-    this.#setStatus({ kind: 'loading', code: 'reading-folder', message: 'Ordner wird gelesen …' });
+    this.#setStatus({ kind: 'loading', code: 'reading-folder' });
     const files = new Map<string, File>();
     const entries: MetacomEntry[] = [];
 
@@ -221,7 +220,7 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Last-resort path: a zip of the user's own symbol folder, unpacked in-browser. */
   async useZip(file: File): Promise<void> {
-    this.#setStatus({ kind: 'loading', code: 'unpacking-zip', message: 'ZIP wird entpackt …' });
+    this.#setStatus({ kind: 'loading', code: 'unpacking-zip' });
     // Loaded on demand: JSZip is large and only this fallback path needs it.
     const { default: JSZip } = await import('jszip');
     const zip = await JSZip.loadAsync(file);
@@ -247,7 +246,7 @@ export class MetacomProvider implements SymbolProvider {
     this.#rootName = '';
     await metacomStore.clear();
     this.#setStatus(
-      { kind: 'needs-setup', code: 'no-folder', message: 'Noch kein METACOM-Ordner ausgewählt.' },
+      { kind: 'needs-setup', code: 'no-folder' },
     );
   }
 
@@ -259,7 +258,7 @@ export class MetacomProvider implements SymbolProvider {
   /* ------------------------------------------------------------- index ---- */
 
   async #buildIndexFromHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-    this.#setStatus({ kind: 'loading', code: 'indexing', message: 'Symbole werden indiziert …' });
+    this.#setStatus({ kind: 'loading', code: 'indexing' });
     const entries: MetacomEntry[] = [];
     try {
       await walk(handle, '', entries);
@@ -267,7 +266,9 @@ export class MetacomProvider implements SymbolProvider {
       this.#setStatus({
         kind: 'error',
         code: 'read-failed',
-        message: err instanceof Error ? err.message : 'Ordner konnte nicht gelesen werden.',
+        // Present only when the browser actually said something; `code` is
+        // what the product turns into a sentence.
+        ...(err instanceof Error ? { detail: err.message } : {}),
       });
       return;
     }
@@ -295,7 +296,6 @@ export class MetacomProvider implements SymbolProvider {
         : {
             kind: 'error',
             code: 'no-images',
-            message: 'In diesem Ordner wurden keine Bilddateien gefunden.',
           },
     );
   }

@@ -19,7 +19,6 @@ describe('MetacomProvider', () => {
     expect(new MetacomProvider().status()).toEqual({
       kind: 'needs-setup',
       code: 'no-folder',
-      message: 'Noch kein METACOM-Ordner ausgewählt.',
     });
   });
 

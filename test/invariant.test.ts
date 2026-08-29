@@ -129,18 +129,18 @@ describe('needsAttention', () => {
   it('is true where the source was working and has stopped by itself', () => {
     // The browser withdrew the permission on a folder that is still stored.
     expect(api.needsAttention(
-      { kind: 'needs-setup', code: 'permission-needed', message: '' })).toBe(true);
+      { kind: 'needs-setup', code: 'permission-needed' })).toBe(true);
     expect(api.needsAttention(
-      { kind: 'error', code: 'read-failed', message: '' })).toBe(true);
+      { kind: 'error', code: 'read-failed' })).toBe(true);
   });
 
   it('is false where nobody has set it up, and while it is still working on it', () => {
     // Not everybody has a METACOM licence, and nothing is owed by not having one.
     expect(api.needsAttention(
-      { kind: 'needs-setup', code: 'no-folder', message: '' })).toBe(false);
+      { kind: 'needs-setup', code: 'no-folder' })).toBe(false);
     // A state that ends on its own is not somebody's to act on.
     expect(api.needsAttention(
-      { kind: 'loading', code: 'indexing', message: '' })).toBe(false);
+      { kind: 'loading', code: 'indexing' })).toBe(false);
     expect(api.needsAttention({ kind: 'ready' })).toBe(false);
   });
 });
@@ -204,5 +204,54 @@ describe('a database two differently-versioned apps share', () => {
     answersNothing();
 
     await expect(new ArasaacProvider().search('newersibling')).resolves.toEqual([]);
+  });
+});
+
+/**
+ * The rule the family already keeps twice, now held here: **this package
+ * returns ids and shapes, never words.**
+ *
+ * `ProviderStatus` carried a `message` until 2.0.0 — a German sentence offered
+ * as a default, with a comment saying a host could show it or translate from
+ * `code` instead. Both consumers believed the comment and answered it
+ * differently: vorlaut never read it, bildhaft read it at three sites, and a
+ * reader who had set bildhaft to English was shown „Ordner wird gelesen …"
+ * with nothing bildhaft could do about it, because the words were ours.
+ *
+ * A type cannot come back after a release and re-grow a field, but a person
+ * can, and the reason they would is that a default *feels* like a kindness. So
+ * this asserts the shape at run time, across every state a provider actually
+ * reaches: three keys are permitted and `detail` is one of them only because it
+ * carries what the browser said, which is not a sentence this package wrote.
+ */
+describe('a status is something to branch on, not something to print', () => {
+  const ALLOWED = new Set(['kind', 'code', 'detail']);
+
+  const shapely = (status: api.ProviderStatus): void => {
+    for (const key of Object.keys(status)) expect(ALLOWED).toContain(key);
+    // The one string that may survive is the platform's, never ours. Anything
+    // else with prose in it would have to be a fourth key, which is the line
+    // above; this is the second half — no German hiding inside `code`.
+    if ('code' in status) expect(status.code).toMatch(/^[a-z-]+$/);
+  };
+
+  it('holds for every state a provider reaches', () => {
+    for (const status of [
+      { kind: 'ready' },
+      { kind: 'needs-setup', code: 'no-folder' },
+      { kind: 'needs-setup', code: 'permission-needed' },
+      { kind: 'loading', code: 'reading-folder' },
+      { kind: 'loading', code: 'unpacking-zip' },
+      { kind: 'loading', code: 'indexing' },
+      { kind: 'error', code: 'no-images' },
+      { kind: 'error', code: 'read-failed', detail: 'NotReadableError' },
+      { kind: 'error', code: 'network', detail: 'offline' },
+    ] as const satisfies readonly api.ProviderStatus[]) shapely(status);
+  });
+
+  it('holds for the status a fresh provider actually reports', () => {
+    // Not a literal written in this file: the one the code produces, which is
+    // where a re-added default would appear first.
+    shapely(new api.MetacomProvider().status());
   });
 });
