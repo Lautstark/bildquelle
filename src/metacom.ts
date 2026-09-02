@@ -61,6 +61,8 @@ export class MetacomProvider implements SymbolProvider {
   #source: Source = { kind: 'none' };
   #entries: MetacomEntry[] = [];
   #byPath = new Map<string, MetacomEntry>();
+  /* Built on the first search after an index changes, thrown away with it. */
+  #categories: Map<string, readonly string[]> | null = null;
   #objectUrls = new Map<string, string>();
   #rootName = '';
   #preferred: string | null = null;
@@ -243,6 +245,7 @@ export class MetacomProvider implements SymbolProvider {
     this.#source = { kind: 'none' };
     this.#entries = [];
     this.#byPath.clear();
+    this.#categories = null;
     this.#rootName = '';
     await metacomStore.clear();
     this.#setStatus(
@@ -289,6 +292,7 @@ export class MetacomProvider implements SymbolProvider {
     this.#revokeAll();
     this.#entries = entries;
     this.#byPath = new Map(entries.map((e) => [e.path, e]));
+    this.#categories = null;
     this.#rootName = rootName;
     this.#setStatus(
       entries.length > 0
@@ -355,13 +359,22 @@ export class MetacomProvider implements SymbolProvider {
      * already began with one of the pair, so it already scored at least 55 and
      * was already in the answer. Rows are reordered; none appear, none drop.
      */
+    const folders = this.#categoriesOf();
     const scored: Candidate[] = [];
     for (const entry of this.#entries) {
       const label = foldGerman(entry.label);
       let best = scoreLabel(folded, label);
       const paired = pairApart(label);
       if (paired) best = Math.max(best, scoreLabel(folded, paired));
-      if (best >= 25) scored.push({ id: entry.path, label: entry.label, score: best });
+      if (best >= 25) {
+        const categories = folders.get(entry.path);
+        scored.push({
+          id: entry.path,
+          label: entry.label,
+          score: best,
+          ...(categories ? { categories } : {}),
+        });
+      }
     }
 
     /*
@@ -401,6 +414,52 @@ export class MetacomProvider implements SymbolProvider {
   /** The rendering currently preferred, or null. */
   get preferredRendering(): string | null {
     return this.#preferred;
+  }
+
+  /**
+   * Which folders say what a symbol *is*, per path.
+   *
+   * METACOM has no categories to hand out: filenames and the folders above them
+   * are the whole of the metadata, which is why this is derived rather than
+   * fetched. Two kinds of segment are thrown away and everything left is kept:
+   *
+   * - **The ones that only name a rendering.** `renderings()` already works
+   *   out which those are, and they say which copy of a symbol you are looking
+   *   at, never what it is a picture of.
+   * - **The ones every file is under.** That is the collection itself. „METACOM
+   *   9" on all nine thousand words is not a category; it is the name of the
+   *   box they came in, and a tag that is true of everything sorts nothing.
+   *
+   * What is left is the person's own folder names, in their own language, as
+   * good as their copy is organised — which for a stock distribution is
+   * METACOM's own grouping, and for a folder somebody rearranged is theirs.
+   * This package has no way to tell those apart and does not try to: it reports
+   * what the folders say, and the host decides whether to suggest it.
+   *
+   * Built once per index and dropped with it. Deriving it costs two passes over
+   * every entry, which is a search's worth of work done once rather than a
+   * little of it on every keystroke.
+   */
+  #categoriesOf(): Map<string, readonly string[]> {
+    if (this.#categories) return this.#categories;
+
+    const renderings = new Set(this.renderings().map((r) => r.segment));
+    const counts = new Map<string, number>();
+    for (const entry of this.#entries) {
+      for (const segment of new Set(entry.path.split('/').slice(0, -1))) {
+        counts.set(segment, (counts.get(segment) ?? 0) + 1);
+      }
+    }
+
+    const total = this.#entries.length;
+    const built = new Map<string, readonly string[]>();
+    for (const entry of this.#entries) {
+      const kept = entry.path.split('/').slice(0, -1)
+        .filter((segment) => !renderings.has(segment) && (counts.get(segment) ?? 0) < total);
+      if (kept.length > 0) built.set(entry.path, kept);
+    }
+    this.#categories = built;
+    return built;
   }
 
   /**

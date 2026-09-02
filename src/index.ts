@@ -15,6 +15,7 @@ export type {
   ProviderListener,
   ProviderStatus,
   SymbolProvider,
+  WordClass,
 } from './types.js';
 /** Which provider states are somebody's to act on. See the note on it. */
 export { needsAttention } from './types.js';

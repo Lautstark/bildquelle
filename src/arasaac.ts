@@ -1,6 +1,6 @@
 import { arasaacCache } from './storage.js';
 import { scoreLabel } from './text.js';
-import type { Candidate, LanguageCode, ProviderStatus, SymbolProvider } from './types.js';
+import type { Candidate, LanguageCode, ProviderStatus, SymbolProvider, WordClass } from './types.js';
 
 /*
  * ARASAAC keeps a set of keywords per language and the language is part of the
@@ -73,9 +73,38 @@ const wordCount = (label: string) => Math.max(0, label.trim().split(/\s+/).lengt
 /** Cached searches go stale eventually, but ARASAAC changes slowly. */
 const SEARCH_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
+/**
+ * What ARASAAC's keyword `type` numbers mean, as far as they could be read.
+ *
+ * The API documents the field nowhere this package could find, so this is a
+ * reading of the answers rather than a translation of a spec, and it is
+ * deliberately short. Sampled 2026-09-02 over de/search for apfel, essen,
+ * laufen, gross, schnell, ich and heute:
+ *
+ * | type | what came back |
+ * | --- | --- |
+ * | 1 | ich, mich, mir — and one whole sentence |
+ * | 2 | Apfel, Essen, Schokolade, Läufer, Athlet |
+ * | 3 | laufen, rennen, joggen, essen, speisen |
+ * | 4 | groß, größer, schnell, rasant — **and heute** |
+ * | 5 | „...und wenn sie nicht gestorben sind" |
+ * | 6 | heute |
+ *
+ * 2 and 3 are the two that hold: every sample was a noun, every sample was a
+ * verb, and those are also the two a communication board sorts by. 4 is the one
+ * to resist — it looks like "adjective" until an adverb falls out of it, and a
+ * word class this package states wrongly is worse than one it does not state,
+ * because the host has no way to tell it is wrong. 1, 5 and 6 are thinner than
+ * that again. A third member is a minor version away for whoever has the sample
+ * to justify it.
+ */
+const WORD_CLASSES: Record<number, WordClass | undefined> = { 2: 'noun', 3: 'verb' };
+
 interface ArasaacPictogram {
   _id: number;
   keywords?: { keyword: string; type?: number }[];
+  /** ARASAAC's own category names, English whatever the search language. */
+  categories?: string[];
   schematic?: boolean;
   aac?: boolean;
   aacColor?: boolean;
@@ -209,7 +238,12 @@ export class ArasaacProvider implements SymbolProvider {
   #rank(query: string, pictograms: ArasaacPictogram[]): Candidate[] {
     return pictograms
       .map((p, apiRank) => {
-        const keywords = (p.keywords ?? []).map((k) => k.keyword).filter(Boolean);
+        /* The keyword the label came from, not just its text: its `type` is the
+           only word class ARASAAC offers, and it belongs to that keyword rather
+           than to the pictogram. Taking it from any other one would say "verb"
+           about a picture captioned with a noun. */
+        const named = (p.keywords ?? []).filter((k) => Boolean(k.keyword));
+        const keywords = named.map((k) => k.keyword);
         const label = keywords[0] ?? String(p._id);
         const best = keywords.reduce((acc, kw) => Math.max(acc, scoreLabel(query, kw)), 0);
 
@@ -227,6 +261,13 @@ export class ArasaacProvider implements SymbolProvider {
           id: String(p._id),
           label,
           score: best + aacBonus - penalty - apiRank * 0.5,
+          /* Carried through rather than stated: absent stays absent, so a
+             pictogram ARASAAC files under nothing does not arrive claiming an
+             empty list of categories. */
+          ...(p.categories?.length ? { categories: p.categories } : {}),
+          ...(WORD_CLASSES[named[0]?.type ?? 0]
+            ? { wordClass: WORD_CLASSES[named[0]?.type ?? 0] }
+            : {}),
         };
       })
       .sort((a, b) => b.score - a.score)

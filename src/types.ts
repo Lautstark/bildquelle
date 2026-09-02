@@ -28,12 +28,51 @@ export type LanguageCode = 'de' | 'en';
 /** Every language above, for hosts that offer a choice. */
 export const LANGUAGES: readonly LanguageCode[] = ['de', 'en'];
 
+/**
+ * A symbol's word class, where the source says one.
+ *
+ * A closed union rather than the source's own number, and a shape rather than a
+ * word: a host with a translation table can put „Nomen" or "noun" on it, and
+ * this package stays out of the wording — the same rule `ProviderStatus` keeps.
+ *
+ * Two members, because two are what ARASAAC's keyword types were read to mean
+ * with any confidence. `arasaac.ts` has the sample and says what the others
+ * turned out to be, including the one that looks like "adjective" until an
+ * adverb comes out of it.
+ */
+export type WordClass = 'noun' | 'verb';
+
 /** A symbol offered for a query. `id` is provider-local and opaque to callers. */
 export interface Candidate {
   id: string;
   label: string;
   /** Higher is better. Meaningful only for ordering within one provider's results. */
   score: number;
+  /**
+   * What the source files this symbol under. Absent when it files it under
+   * nothing, which is most of METACOM and some of ARASAAC.
+   *
+   * **The two sources mean different things by it, and a host that shows these
+   * has to know which it is holding.**
+   *
+   * ARASAAC's are its own category names — `fruit`, `core vocabulary-feeding` —
+   * and they come back in *English whatever language was searched*, because
+   * they are a fixed vocabulary rather than text for a reader. Treat them as
+   * identifiers: match the ones you have words for, ignore the rest, and never
+   * put one on screen untranslated.
+   *
+   * METACOM's are the folders the file sits in, minus the ones that only name a
+   * rendering. They are the person's own copy of a commercial set, so they are
+   * already in their language and already their words — and equally they are
+   * whatever they renamed them to.
+   *
+   * Neither is a promise about a symbol's meaning. They are what the source
+   * happens to say, offered so a host can suggest a tag rather than ask a
+   * person to type three hundred.
+   */
+  categories?: readonly string[];
+  /** The word class the source gives this symbol, where it gives one. */
+  wordClass?: WordClass;
 }
 
 /**
