@@ -25,8 +25,14 @@ below.
 From a clean `main`:
 
 ```
-npm version minor
+npm version minor -m "chore(release): %s"
 ```
+
+The message matters: a `commit-msg` hook holds this repo to conventional
+commits, and npm's default message is the bare version number, which the hook
+rejects *after* `preversion` has run and the bump has been written. Recovering
+from that is committing the staged bump by hand — which is what happened on the
+way to `v2.1.0`, and why this line now carries the flag.
 
 `preversion` runs typecheck, tests and both builds first, so a broken tree
 cannot be tagged. On success npm bumps `package.json`, commits, and creates the
