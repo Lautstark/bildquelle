@@ -27,6 +27,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/browser/index.js"
     },
+    "./metacom-panel": {
+      "types": "./dist/metacom-panel.d.ts",
+      "default": "./dist/metacom-panel.js"
+    },
     "./german": {
       "types": "./dist/german/index.d.ts",
       "default": "./dist/german/index.js"
@@ -58,6 +62,7 @@
     "@types/node": "^22.20.1",
     "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.0.0",
+    "jsdom": "^30.0.1",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   },
