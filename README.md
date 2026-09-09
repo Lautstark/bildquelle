@@ -190,8 +190,44 @@ re-requested per component.
 | `attributionsFor(ids)` | The licence notices owed by a set of providers, deduplicated. |
 | `clearAllProviderData()` | Drops everything stored: caches, index, folder handle. For a host's "delete all my data". |
 | `scoreLabel`, `foldGerman` | The matching helpers both providers use, exported for hosts that rank their own results the same way. |
+| `Candidate`, `WordClass` | A ranked answer, and what the source says it is. See below. |
 
 `search` never throws — it returns `[]` and reflects the trouble in `status()`.
+
+### What a candidate says about a symbol
+
+A `Candidate` is `id`, `label`, `score` — and, since 2.1.0, two optional fields
+carrying what the source itself says the symbol is. They exist so a host can
+*suggest* a tag rather than ask somebody to type three hundred of them; absent
+means the source said nothing, which is most of METACOM and some of ARASAAC.
+
+| Field | ARASAAC | METACOM |
+| --- | --- | --- |
+| `categories` | Its own category names — `fruit`, `core vocabulary-feeding`. | The folders the file sits in, minus the ones that only name a rendering. |
+| `wordClass` | `noun` or `verb`, from the keyword the label came from. | Absent. It has none to give. |
+
+**The two sources do not mean the same thing by `categories`, and a host that
+shows one as though it were the other puts „fruit" under a German apple.**
+ARASAAC's are a fixed vocabulary and come back in *English whatever language was
+searched*, because they are identifiers rather than text for a reader: match the
+ones you have words for, ignore the rest, and never print one untranslated.
+METACOM's are the folders in somebody's own copy of a commercial set — already
+their words, already their language, and equally whatever they renamed them to.
+
+Neither is a promise about meaning. They are what the source happens to say.
+
+`wordClass` is a closed union rather than the source's own number, for the same
+reason a status has no `message`: this package returns shapes, never words.
+ARASAAC types every keyword and documents the numbers nowhere we could find, so
+only the two that held across a sample are mapped — every type 2 was a noun and
+every type 3 a verb. Type 4 looks like "adjective" until „heute" falls out of
+it, and a word class stated wrongly is worse than one left out, because the host
+cannot tell. The sample is in `arasaac.ts` above `WORD_CLASSES`; a third member
+is a minor version away for whoever has the evidence.
+
+A search answered from a cache written before 2.1.0 carries neither field, and
+gains them when its thirty days are up. Nothing is purged to hurry that along —
+see RELEASING.md on what purging stale rows cost in v1.6.0.
 
 A status carries a `code`, and the code is the whole answer — there is no
 sentence to print. Branch on it and supply the words yourself: it is not a
