@@ -193,10 +193,17 @@ re-requested per component.
 
 `search` never throws — it returns `[]` and reflects the trouble in `status()`.
 
-A status carries a `code` as well as a `message`. Branch on the code; the
-message is a default in the provider's own language, and it is not a shared
-package's business to decide the wording for a host that ships in more than
-one language.
+A status carries a `code`, and the code is the whole answer — there is no
+sentence to print. Branch on it and supply the words yourself: it is not a
+shared package's business to decide the wording for a host that ships in more
+than one language, and a default that is only right for one of them is a trap
+rather than a convenience.
+
+An `error` may additionally carry `detail` — whatever the browser or the
+network said, untranslated and in whatever language the platform chose. It is
+there because a folder that would not read and a request that did not answer
+carry information no enum can. Show it *beside* a host's own translation of
+`code`, never instead of one.
 
 | `kind` | `code` |
 | --- | --- |
