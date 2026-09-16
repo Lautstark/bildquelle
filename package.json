@@ -51,6 +51,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "prepare": "npm run build && npm run build:browser",
     "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"
   },
   "dependencies": {
@@ -72,9 +73,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
   }
 }

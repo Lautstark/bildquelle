@@ -46,8 +46,8 @@ jobs:
       # not just a broken test.
       - run: npm test
 
-      # Both builds ship in the npm tarball, made by release.yml before it
-      # packs. They run here too so a pull request cannot break either.
+      # Consumers install from git, so `prepare` runs both on their machine.
+      # They run here too so a pull request cannot break either.
       - run: npm run build
 
       - run: npm run build:browser
