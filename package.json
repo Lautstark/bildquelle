@@ -43,6 +43,7 @@
   "files": [
     "dist",
     "src",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -50,23 +51,29 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "prepare": "npm run build && npm run build:browser",
-    "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap",
-    "preversion": "npm run typecheck && npm test && npm run build && npm run build:browser"
+    "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"
   },
   "dependencies": {
     "idb": "^8.0.3",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
     "@types/node": "^22.20.1",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
     "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^30.0.1",
+    "semantic-release": "^25.0.9",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

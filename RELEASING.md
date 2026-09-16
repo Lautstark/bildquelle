@@ -1,71 +1,83 @@
 # Releasing
 
-There is no registry publish. A **git tag is the release** — consumers resolve
-`#semver:^1.0.0` against the tags in this repo, so pushing a tag is the moment a
-version becomes real for bildhaft and vorlaut. Treat it as publishing, because
-it is.
+**Since 2026-09-16 this package is published to npmjs.org as
+`@lautstark/bildquelle`, prebuilt, by CI, from the commit subjects.** Nobody
+runs `npm version` any more and nobody writes a tag. `dist/` — both the node
+build and the browser bundle — is in the tarball and there is no `prepare`
+script: a consumer installs compiled output and compiles nothing.
 
-## Why v1.0.0 has no bump commit
-
-`npm version` bumps, and `1.0.0` was already the version in `package.json` — it
-had simply never been tagged. So `v1.0.0` was cut by hand, with the gate run
-manually because `preversion` only fires on a bump:
-
-```
-npm run typecheck && npm test && npm run build && npm run build:browser
-git tag -a v1.0.0 -m "1.0.0"
-```
-
-Annotated, because that is what `npm version` creates and the tags should not
-be two different kinds of object. Every release after this one uses the flow
-below.
-
-## Cutting a release
-
-From a clean `main`:
+The `github:Lautstark/bildquelle#vX.Y.Z` pins still resolve for every tag cut
+before that date. No tag cut after it carries a build step, so a consumer that
+wants anything newer than v2.2.0 takes it from npm:
 
 ```
-npm version minor -m "chore(release): %s"
+npm install @lautstark/bildquelle@^2.2.0
 ```
 
-The message matters: a `commit-msg` hook holds this repo to conventional
-commits, and npm's default message is the bare version number, which the hook
-rejects *after* `preversion` has run and the bump has been written. Recovering
-from that is committing the staged bump by hand — which is what happened on the
-way to `v2.1.0`, and why this line now carries the flag.
+A **git tag is still the release**, and it is still the thing that must never
+move. What changed is who cuts it.
 
-`preversion` runs typecheck, tests and both builds first, so a broken tree
-cannot be tagged. On success npm bumps `package.json`, commits, and creates the
-tag — `v1.1.0`, which is the shape npm's `#semver:` resolver expects.
+## What happens on a push to main
 
-Nothing has left your machine yet. Check `git show --stat HEAD` and then:
+`.github/workflows/release.yml` calls the family's reusable workflow in
+`Lautstark/.github`, which runs the gate — typecheck, the tests, both builds —
+checks that the tarball `npm pack` would ship carries every entry point
+`package.json` declares and no `prepare` script, and then runs
+`semantic-release`, configured in `release.config.mjs`.
 
-```
-git push --follow-tags
-```
+semantic-release reads every commit since the last `v*` tag and decides:
 
-CI re-runs the whole gate on the tag from a clean checkout, and asserts the tag
-matches `package.json`.
+| subjects since the last tag contain | bump |
+|---|---|
+| `feat!:`, or a `BREAKING CHANGE:` trailer | **major** |
+| `feat:` | **minor** |
+| `fix:`, `perf:` | **patch** |
+| only `docs:`, `test:`, `ci:`, `build:`, `chore:`, `refactor:` | none — green, nothing published |
 
-### Why the push is a separate step
+If there is a bump, it writes the version into `package.json` and the
+lockfile's mirror of it, prepends the notes to `CHANGELOG.md`, commits the
+three as `chore(release): x.y.z`, tags that commit `vx.y.z`, publishes the
+tarball to npmjs.org with provenance, and writes a GitHub release with the
+same notes. Then it checks that the tag on the commit, `package.json` and what
+the registry answers for that version are one number — the check the old
+tag-triggered CI made, asked of the commit it just tagged.
 
-`npm version` does not push, and this repo deliberately leaves it that way. A
-pushed tag can be resolved by a consumer within seconds and must never be moved
-afterwards, so the irreversible half is its own command rather than a side
-effect of one that sounds local. If you would rather it were automatic, add
-`"postversion": "git push --follow-tags"` — but then `npm version patch`
-publishes, and it should read that way to whoever runs it.
+**So the bump is decided when the commit is written, not when the release is
+cut.** The commit subject is the release note and the version at once, which
+is why `commit-messages.yml` refuses a subject without a prefix. Everything
+below about *which* bump is now about which prefix — and it is worth more
+than it was, because the number is a resolver input again: consumers take
+this package as a caret range, and Renovate merges a minor or a patch into
+them on its own once their tests pass. **This package is the exception the
+family keeps by hand**: its `renovate.json5` rules say a bump of
+`@lautstark/bildquelle` in a consumer waits for a person whatever the size,
+because what it changes is what may leave a METACOM folder, and that is not a
+question a green test suite answers. A major waits everywhere.
 
-## Which bump
+## What a person still does, once
 
-Consumers pin with `^`, so the major is the only thing protecting them.
+The workflow stops before semantic-release, green, with a notice, until the
+npm side exists. That side is an account and cannot be created from a
+repository: the `lautstark` organisation on npmjs.org, the first publish of
+this package by hand (`npm ci && npm run build && npm run build:browser &&
+npm publish --access public` from a clean checkout), and then either trusted
+publishing for `release.yml` plus a repository variable
+`NPM_TRUSTED_PUBLISHING=true`, or an organisation secret `NPM_TOKEN`.
+`@lautstark/sicherung`'s RELEASING.md spells the three out; they are the same
+for every package in the family.
 
-- **patch** — a fix with no API change.
-- **minor** — new exports, new optional arguments.
-- **major** — anything a consumer must change code for: a removed or renamed
-  export, a changed return shape, a new required argument. The
-  `PictogramStatus` code added in `f62dfcc` is the kind of change to look at
-  twice: adding a field is minor, changing what an existing one means is not.
+## Which prefix
+
+Consumers take `^`, so the major is the only thing protecting them.
+
+- **`fix:`** — a fix with no API change.
+- **`feat:`** — new exports, new optional arguments.
+- **`feat!:`** — anything a consumer must change code for: a removed or
+  renamed export, a changed return shape, a new required argument. Put the
+  reason in a `BREAKING CHANGE:` trailer; it becomes the first paragraph of
+  the release note. The `PictogramStatus` code added in `f62dfcc` is the kind
+  of change to look at twice: adding a field is minor, changing what an
+  existing one means is not.
 
 A licensing change is always major, whatever the diff size. Consumers inherit
 the behaviour described in the README without inheriting the README, and the
@@ -105,38 +117,11 @@ not moved. It is the one kind of break that hits consumers who change nothing.
 
 ## Moving a consumer onto the range
 
-Changing a consumer's spec to `#semver:^1.0.0` and running `npm install` does
-nothing, and says nothing. npm keeps whatever commit the lockfile already names
-and never looks at the tags.
-
-That is not a bug. Every commit made before `v1.0.0` also calls itself `1.0.0`,
-because the version sat in `package.json` untagged for the whole of that
-history. A lockfile pinning some old sha therefore already claims a version the
-range accepts, and npm has no reason to go looking. Name the package to force
-the question:
-
-```
-npm install "github:Lautstark/bildquelle#semver:^1.0.0"
-```
-
-Then check what landed, and do not take a green build as the answer — the old
-commit is still a working bildquelle, so tests pass against it just as happily:
-
-```
-grep -A2 '"node_modules/@lautstark/bildquelle"' package-lock.json
-```
-
-The `resolved` sha there should be the one `git rev-parse v1.0.0^{}` prints in
-this repo. When bildhaft moved, the spec said `^1.0.0`, the build passed, the
-e2e suite passed, and the installed code was still four commits old.
-
-Two smaller things fall out of the same re-resolution: npm drops the
-`integrity` line for the dependency, and the range is only honoured from then
-on — it does not retroactively explain what the previous sha was.
-
-None of this outlives the next release. Once a second version exists the
-versions differ, ordinary resolution works, and only a lockfile written before
-the tags existed is affected.
+Before 2026-09-16 this section explained why `#semver:^1.0.0` on a `github:`
+dependency resolved to nothing new — every pre-tag commit also called itself
+`1.0.0`, and npm never looked at the tags. That trap was the git resolver's
+and is gone with it: `npm install @lautstark/bildquelle@^2.2.0` asks the
+registry, and the registry has exactly the versions that were released.
 
 ## Why v1.6.3 is published and should not be pinned
 
@@ -179,6 +164,7 @@ have caught this.
 
 ## Never move a published tag
 
-If a tag is wrong, cut the next version. Re-pointing `v1.1.0` leaves consumers
-with lockfiles pinned to a commit that no longer matches the tag, and nothing
-warns them.
+If a tag is wrong, cut the next version: a `fix:` commit. Re-pointing `v1.1.0`
+leaves consumers with lockfiles pinned to a commit that no longer matches the
+tag, and nothing warns them. Since 2026-09-16 that goes for the npm side too —
+a published version cannot be replaced, only deprecated and superseded.
