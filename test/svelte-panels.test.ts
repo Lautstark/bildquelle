@@ -238,6 +238,12 @@ const leadTile = createRawSnippet(() => ({
   render: () => '<button type="button" id="home" class="picker__item">Start</button>',
 }));
 
+/* Stands in for bildhaft's three rows under the field: a block between the
+   field and the grid, which is neither and must be in neither. */
+const betweenRows = createRawSnippet(() => ({
+  render: () => '<div id="own" class="picker__own">eigenes Bild</div>',
+}));
+
 describe('svelte/SymbolSearch', () => {
   /* §6.4: the minimum is three characters and the debounce is 300ms. */
   it('does not search below the minimum, and does after the debounce', async () => {
@@ -480,6 +486,37 @@ describe('svelte/SymbolSearch', () => {
 
     expect(press(tiles[2]!, 'ArrowUp')).toBe(false);
     expect(document.activeElement).toBe(field);
+  });
+
+  /* bildhaft has three rows under its field and above its grid, and its own
+     stylesheet says where the last of them goes: "below the own-image row and
+     above the suggestions". With field and grid welded into one block that is
+     unsayable — above the block puts the search field fourth in a dialog
+     somebody opened to search in, below it contradicts the sentence. §6 answers
+     that case: change the component, not the consumer's markup. */
+  it('draws a between block after the field and before the box, in neither', async () => {
+    const node = render(SymbolSearch, {
+      provider: source(), words: WORDS, suggestions: HITS, onpick: () => {},
+      between: betweenRows,
+    });
+    await settle();
+    const own = node.querySelector('#own')!;
+    const field = node.querySelector('input[type="search"]')!;
+    const box = node.querySelector('.picker__grid')!;
+    expect(own.parentElement).toBe(node);
+    expect(box.contains(own)).toBe(false);
+    expect(field.compareDocumentPosition(own) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(own.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps a between block out of the roving ring', async () => {
+    /* The difference from `lead`, and the reason both exist. */
+    const node = render(SymbolSearch, {
+      provider: source(), words: WORDS, suggestions: HITS, onpick: () => {},
+      between: betweenRows,
+    });
+    await settle();
+    expect(node.querySelectorAll('button.picker__item')).toHaveLength(3);
   });
 
   /* The lead snippet's tile joins the ring by carrying the class, which is what

@@ -123,6 +123,7 @@
     class: extra,
     onpick,
     onescape,
+    between,
     lead,
     trailing,
     caption,
@@ -214,6 +215,28 @@
      * behaviour and the field clears.
      */
     onescape?: () => void;
+    /**
+     * Drawn between the field and the results box, outside both.
+     *
+     * For a picker that has rows under its field and above its grid. bildhaft
+     * has three — the own-image row, the print caption and the negation — and
+     * its stylesheet records where the last of them goes: "below the own-image
+     * row and above the suggestions: it applies to whichever symbol is chosen,
+     * so it belongs with neither."
+     *
+     * Without this slot that arrangement is unsayable. The field and the grid
+     * are one block here, so three rows that used to sit between them have to
+     * go above the block or below it — above puts the search field fourth in a
+     * dialog somebody opened to search in, and below contradicts the sentence
+     * quoted above. bildhaft adopted the component, chose the first, and said
+     * plainly that neither §6.4 nor its brief authorised the move. §6 answers
+     * that case: if a component cannot serve one consumer, change the
+     * component, not the consumer's markup.
+     *
+     * Not `lead`, which is inside the box: a tile there joins the roving ring
+     * and scrolls with the hits, and these rows are neither.
+     */
+    between?: Snippet<[SearchAnswer]>;
     /** Drawn inside the results box, before the hits. A tile here carrying
      *  `picker__item` is index 0 of the roving ring, which is what vorlaut's
      *  prescribed start-key tile needs to be. */
@@ -495,7 +518,7 @@
 <div {id} class={extra}><input
     bind:this={field} bind:value={query} class="field" type="search" autocomplete="off"
     aria-label={words.field} placeholder={words.placeholder} hidden={busy} oninput={typed}
-  /><div
+  />{@render between?.(answer)}<div
     bind:this={box} class="picker__grid" hidden={busy} role="presentation" onkeydown={walk}
   >{@render lead?.(answer)}{#each shown as candidate (candidate.id)}{@const among = twins.get(candidate.label) === true}{@const name = describe(candidate, among)}<button
         type="button" tabindex="-1"
