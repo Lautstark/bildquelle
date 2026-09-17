@@ -64,6 +64,23 @@ export class MetacomProvider implements SymbolProvider {
   /* Built on the first search after an index changes, thrown away with it. */
   #categories: Map<string, readonly string[]> | null = null;
   #objectUrls = new Map<string, string>();
+  /*
+   * The folders already opened, by their path under the collection root.
+   *
+   * Opening one is not free: it is a question put to the file system, and in a
+   * METACOM collection — 68,000 files in one household's — it measured around
+   * 30ms. #readBlob walked the path from the root for every single picture, so
+   * a picker showing two dozen suggestions opened the same four folders two
+   * dozen times: 76 openings and 2.3 seconds for one press, measured in that
+   * household's browser. The handles are good for as long as the source is.
+   *
+   * Promises rather than handles, because the misses arrive together — two
+   * dozen pictures resolve in parallel and would otherwise all miss, all open,
+   * and all cache the same folder. A failed opening is forgotten again, so a
+   * folder that was not there when it was first asked for can still be found
+   * later.
+   */
+  #dirs = new Map<string, Promise<FileSystemDirectoryHandle>>();
   #rootName = '';
   #preferred: string | null = null;
   #status: ProviderStatus =
@@ -603,10 +620,7 @@ export class MetacomProvider implements SymbolProvider {
     try {
       if (source.kind === 'handle') {
         const segments = path.split('/').filter(Boolean);
-        let dir = source.handle;
-        for (const segment of segments.slice(0, -1)) {
-          dir = await dir.getDirectoryHandle(segment);
-        }
+        const dir = await this.#dirFor(source.handle, segments.slice(0, -1));
         const fileHandle = await dir.getFileHandle(segments[segments.length - 1]);
         return await fileHandle.getFile();
       }
@@ -618,6 +632,27 @@ export class MetacomProvider implements SymbolProvider {
     return null;
   }
 
+  /** The folder a picture lies in, opened once and then remembered. */
+  async #dirFor(
+    root: FileSystemDirectoryHandle, segments: string[],
+  ): Promise<FileSystemDirectoryHandle> {
+    let dir = Promise.resolve(root);
+    let at = '';
+    for (const segment of segments) {
+      at = at ? `${at}/${segment}` : segment;
+      const known = this.#dirs.get(at);
+      if (known) { dir = known; continue; }
+      const opening = dir.then((inside) => inside.getDirectoryHandle(segment));
+      this.#dirs.set(at, opening);
+      /* A folder that could not be opened is not an answer worth keeping — and
+         the rejection is handled here as well as by the caller, so a miss is
+         not an unhandled one. */
+      opening.catch(() => { if (this.#dirs.get(at) === opening) this.#dirs.delete(at); });
+      dir = opening;
+    }
+    return dir;
+  }
+
   async labelFor(id: string): Promise<string | null> {
     return this.#byPath.get(id)?.label ?? null;
   }
@@ -625,6 +660,9 @@ export class MetacomProvider implements SymbolProvider {
   #revokeAll(): void {
     for (const url of this.#objectUrls.values()) URL.revokeObjectURL(url);
     this.#objectUrls.clear();
+    /* With the pictures, because a remembered folder belongs to the source that
+       was replaced: kept, it would read yesterday's collection. */
+    this.#dirs.clear();
   }
 }
 
