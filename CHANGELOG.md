@@ -1,3 +1,9 @@
+## [2.3.2](https://github.com/Lautstark/bildquelle/compare/v2.3.1...v2.3.2) (2026-09-17)
+
+### Bug Fixes
+
+* let the Svelte panels take the provider a consumer is holding ([bb82119](https://github.com/Lautstark/bildquelle/commit/bb82119d59795d8fbf2fa583d3daccc44458b00e)), closes [#private](https://github.com/Lautstark/bildquelle/issues/private) [#source](https://github.com/Lautstark/bildquelle/issues/source) [#entries](https://github.com/Lautstark/bildquelle/issues/entries) [#byPath](https://github.com/Lautstark/bildquelle/issues/byPath) [#categories](https://github.com/Lautstark/bildquelle/issues/categories)
+
 ## [2.3.1](https://github.com/Lautstark/bildquelle/compare/v2.3.0...v2.3.1) (2026-09-17)
 
 ### Performance Improvements
