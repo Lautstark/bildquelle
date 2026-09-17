@@ -1,6 +1,17 @@
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  /* The components under `svelte/` are compiled here the same way a consumer
+     compiles them — which is the point of shipping them as source, and the only
+     way a test of one is a test of what a product gets. Measured 2026-09-17:
+     the full plugin works in a vitest config at these versions. */
+  plugins: [svelte()],
+  /* Required, and the failure without it says nothing about configuration:
+     vitest otherwise resolves svelte's `server` export, `mount()` throws
+     `lifecycle_function_unavailable`, and every test in the file fails at once.
+     Written first and checked first. */
+  resolve: { conditions: ['browser'] },
   test: {
     // `.claude/worktrees/` holds full checkouts of this repo, each with its own
     // `test/`. Without this, a local `npm test` collects every copy and runs the

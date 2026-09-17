@@ -1,0 +1,17 @@
+/* What `svelte-check` reads, and the only reason it is a second file.
+ *
+ * `tsconfig.json` is what `tsc` typechecks, and `.svelte` is not a thing tsc
+ * can be shown — it would report every one of them as an unknown extension. So
+ * the component directory is listed here instead, `src` with it so that the
+ * boundary between the two is checked rather than inferred: a component calling
+ * a helper in `src/` wrongly is the error this catches and `tsc` cannot.
+ *
+ * `tsconfig.build.json` deliberately does not extend to any of this. `.svelte`
+ * ships as source and reaches consumers through the `svelte` export condition;
+ * a file tsc tried to emit would be published as a copy of itself with a `.js`
+ * name on it. conventions.md §6.0.
+ */
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "svelte"]
+}

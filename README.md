@@ -194,6 +194,27 @@ re-requested per component.
 
 `search` never throws — it returns `[]` and reflects the trouble in `status()`.
 
+### The pieces that draw something
+
+Three subpath exports, for hosts that would otherwise write the same panel a
+fourth time. They emit the class vocabulary `@lautstark/design`'s
+`components.css` draws and import nothing from it — a provider package does not
+gain design as a runtime dependency, which is what keeps a design release off
+this one's critical path. See conventions.md §6.0, §6.4 and §6.8 in that
+repository; `test/css-contract.test.ts` here holds all three to the stylesheet.
+
+| Export | What it is |
+| --- | --- |
+| `@lautstark/bildquelle/metacom-panel` | `metacomPanel(options)`, the licensed-folder block as a DOM node. Also `stateLineFor`, `headlineFor` and the `WORDS` table it says everything with. |
+| `@lautstark/bildquelle/svelte/MetacomPanel` | The same panel as a Svelte 5 component: same options, same markup, the same `WORDS` — imported, not copied. `lang` is a prop and the subscription unmounts itself, so there is no `refresh()` and no `dispose()`. |
+| `@lautstark/bildquelle/svelte/SymbolSearch` | The search field and the grid of pictures that answers it. Minimum three characters with Enter as the override, a 300ms debounce, a stale-answer guard, roving-tabindex arrows, and the source's attribution line. Three snippets — `lead`, `trailing`, `caption` — are handed the search answer, so a product puts its own tiles *inside* the results box rather than around them. |
+
+The two Svelte entries ship as **raw `.svelte` sources** and are compiled by
+your build. That needs no configuration beyond having
+`@sveltejs/vite-plugin-svelte`: the `svelte` export condition tells it this is a
+Svelte library, and svelte `^5` is a peer dependency. Nothing under `svelte/`
+enters `dist`, and the vanilla panel stays for as long as anybody is using it.
+
 ### What a candidate says about a symbol
 
 A `Candidate` is `id`, `label`, `score` — and, since 2.1.0, two optional fields

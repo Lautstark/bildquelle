@@ -114,7 +114,11 @@ export type PanelLang = 'de' | 'en';
 /** The four things somebody can do to a symbol folder. */
 export type MetacomAction = 'choose' | 'zip' | 'reread' | 'forget';
 
-const ALL_ACTIONS: readonly MetacomAction[] = ['choose', 'zip', 'reread', 'forget'];
+/** All four, in the order a panel draws them. The default for `actions`, and
+ *  exported for the same reason `WORDS` is: the twin defaults to the same four
+ *  in the same order, and a second literal is a second answer waiting to be
+ *  edited once. */
+export const ALL_ACTIONS: readonly MetacomAction[] = ['choose', 'zip', 'reread', 'forget'];
 
 export interface MetacomPanelOptions {
   /** The provider this panel is about. Its own `subscribe` drives the repaint. */
@@ -196,7 +200,7 @@ export interface MetacomPanel {
  * has no `t()` and is not growing one; two of its consumers have one and two do
  * not, and a `{root}` convention here would be a third beside theirs.
  */
-interface Words {
+export interface Words {
   /** The licence paragraph. Names no product — see `note` below. */
   licence: string;
   licenceLink: string;
@@ -227,7 +231,23 @@ interface Words {
 /** Every code a status can carry, taken from the package's own union. */
 type StatusCode = Extract<ProviderStatus, { code: string }>['code'];
 
-const WORDS: Record<PanelLang, Words> = {
+/**
+ * Exported because there are two panels now and only one of these.
+ *
+ * `./svelte/MetacomPanel` is the same panel drawn by a framework rather than by
+ * hand, and conventions.md §6.8 says in as many words: same options, same
+ * emitted markup, same words, same `WORDS` tables. A second copy over there
+ * would be two licence paragraphs — which is the one sentence in this package
+ * that is a legal claim rather than a wording, and the one a reader would never
+ * think to diff. So the table is the export and the twin imports it; the vanilla
+ * panel stays until no consumer is left, and until then neither can drift.
+ *
+ * Nothing else should read this. A host wanting words for a `ProviderStatus`
+ * has `stateLineFor` and `headlineFor`, which is the whole of what the union
+ * means put into sentences; the rest of this table is the panel's own furniture
+ * and has no meaning outside it.
+ */
+export const WORDS: Record<PanelLang, Words> = {
   de: {
     /* bildhaft's paragraph with its own name taken out of it — the trick
        `backup-panel` uses and for the same reason: a noun for the product means
