@@ -10,8 +10,22 @@
  * ships as source and reaches consumers through the `svelte` export condition;
  * a file tsc tried to emit would be published as a copy of itself with a `.js`
  * name on it. conventions.md §6.0.
+ *
+ * `test` is here for one file that tsc cannot be shown either:
+ * `test/fixtures/ConsumerCallSite.svelte` is a product's call site, and the
+ * error it exists to fail on — a `MetacomProvider` the consumer holds not
+ * being the one the panel declares — is a compile error and never a runtime
+ * one. Nothing else in `test` needs this; it is already typechecked by
+ * `tsconfig.json`, and being read twice costs a second or two.
+ *
+ * **Both of these now need `dist` to exist**, because the components import
+ * the package's published entries rather than its source. So the build runs
+ * before the typecheck, in `package.json` and in the `gate:` input of
+ * `.github/workflows/release.yml`. The build is `tsc` over `src` with
+ * `.svelte` excluded by construction, so it does not itself wait on the
+ * components typechecking and the order has no knot in it.
  */
 {
   "extends": "./tsconfig.json",
-  "include": ["src", "svelte"]
+  "include": ["src", "svelte", "test"]
 }

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Candidate } from '../src/types.js';
+  import type { Candidate } from '@lautstark/bildquelle';
 
   /**
    * A finished — or unfinished — search, as the snippets see it.
@@ -97,10 +97,17 @@
    * which is a URL and never bytes by construction — for METACOM an object URL
    * valid in this document alone. That is what makes the licence enforceable
    * from inside the package, and there must be no path added that moves bytes.
+   *
+   * **The two types below come from the published entry and not from
+   * `../src/`.** `MetacomPanel.svelte`'s header carries the whole argument;
+   * the short of it is that a consumer holds the `dist` declarations, a class
+   * declared in both is two nominally distinct types, and a component that
+   * reaches into its own package's source is green here and red in every
+   * product.
    */
   import type { Snippet } from 'svelte';
   import { on } from 'svelte/events';
-  import type { SymbolProvider } from '../src/types.js';
+  import type { SymbolProvider } from '@lautstark/bildquelle';
 
   let {
     provider,

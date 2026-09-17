@@ -7,15 +7,32 @@
  * loses one of these is worse than the three copies it replaced, because it
  * loses it in four places at once.
  */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createRawSnippet, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import { metacomPanel } from '../src/metacom-panel.js';
+/* Every import below is one a consumer can write, and that is the point rather
+ * than tidiness. The components used to import `../src/`, which is green here
+ * — the source is right there — and red in every product, because `exports`
+ * points at `dist` and `tsc` writes `#private;` into a class declaration, so
+ * the two `MetacomProvider`s are nominally distinct types. A suite that
+ * imported from `../src/` too was standing on the same side of the seam as the
+ * bug and could not see it. See "the seam" at the bottom of this file. */
+import { MetacomProvider } from '@lautstark/bildquelle';
+import { metacomPanel } from '@lautstark/bildquelle/metacom-panel';
 import MetacomPanel from '../svelte/MetacomPanel.svelte';
 import SymbolSearch from '../svelte/SymbolSearch.svelte';
-import type { MetacomProvider } from '../src/metacom.js';
-import type {
-  Candidate, Failed, Loading, NeedsSetup, ProviderStatus, SymbolProvider,
-} from '../src/types.js';
+import ConsumerCallSite from './fixtures/ConsumerCallSite.svelte';
+import type { Candidate, ProviderStatus, SymbolProvider } from '@lautstark/bildquelle';
+
+/* The three code unions are not exported, and a consumer reads them off
+   `ProviderStatus` exactly like this. Deriving them rather than reaching into
+   `src/types.js` for them also keeps this file's promise: it holds the
+   published surface to what the panel draws, and a code the union gains is one
+   this suite gains with it. */
+type NeedsSetup = Extract<ProviderStatus, { kind: 'needs-setup' }>['code'];
+type Loading = Extract<ProviderStatus, { kind: 'loading' }>['code'];
+type Failed = Extract<ProviderStatus, { kind: 'error' }>['code'];
 
 const mounted: Array<Record<string, unknown>> = [];
 
@@ -158,7 +175,14 @@ describe('svelte/MetacomPanel is the twin of the vanilla panel', () => {
 
   it('unsubscribes when it goes, without a dispose() to call', async () => {
     let live = 0;
-    const metacom = { ...stub({ kind: 'ready' }), subscribe: () => { live += 1; return () => { live -= 1; }; } };
+    /* The cast is `stub`'s, for `stub`'s reason: a spread of a class instance
+       is a plain object, and `MetacomProvider` has private fields, so nothing
+       assembled out here is ever that type. It is also why the stubs cannot be
+       what proves the seam — `test/fixtures/ConsumerCallSite.svelte` does. */
+    const metacom = {
+      ...stub({ kind: 'ready' }),
+      subscribe: () => { live += 1; return () => { live -= 1; }; },
+    } as unknown as MetacomProvider;
     const host = document.createElement('div');
     document.body.append(host);
     const instance = mount(MetacomPanel, { target: host, props: { metacom, say: () => {} } });
@@ -471,5 +495,89 @@ describe('svelte/SymbolSearch', () => {
     expect(tiles).toHaveLength(4);
     expect(tiles[0]!.id).toBe('home');
     expect(tiles[0]!.tabIndex).toBe(0);
+  });
+});
+
+/* --- the seam ------------------------------------------------------------ */
+
+/**
+ * The one thing in this file that is not about what a component draws.
+ *
+ * A shipped component that imports its own package's `src/` is green in this
+ * repository and red in every product: `exports` has no `./src/*` entry, the
+ * consumer holds the `dist` declarations, and `tsc` writes `#private;` into a
+ * class's, so `src/metacom.ts`'s `MetacomProvider` and `dist/index.d.ts`'s are
+ * two types that share a name and nothing else. The suite was blind to it for
+ * exactly one reason — it imported from `../src/` as well. These three cases
+ * are the fix for the blindness rather than for the defect, and all three go
+ * red if somebody reaches into `src/` again.
+ */
+describe('the components import what a consumer imports', () => {
+  /* The compile half is the fixture, which `svelte-check` reads and `tsc`
+     cannot: `test/fixtures/ConsumerCallSite.svelte` annotates a provider as the
+     published `MetacomProvider` and hands it to the panel. Mounting it here
+     says the same thing at runtime, so the fixture is a live call site and not
+     a file only a typechecker visits. */
+  it('takes a provider a consumer is holding, and draws its status', async () => {
+    const node = render(ConsumerCallSite, {});
+    await settle();
+    expect(node.id).toBe('consumer-call-site');
+    expect(node.querySelector('.standing')!.getAttribute('data-state'))
+      .toBe('needs-setup');
+  });
+
+  /**
+   * And the half a typecheck cannot see.
+   *
+   * `MetacomPanel` reaches `MetacomProvider` as a **value**, for the static
+   * `supportsPersistentPicker` — which is why bildhaft's build succeeded while
+   * shipping two copies of the class, +12.9 kB raw and +3.7 kB gz. Two copies
+   * is not something markup can be asked about, so this asks the only question
+   * that separates them: redefine the static on the *published* class and see
+   * whether the panel notices. It does only if it holds that class and not a
+   * second one compiled from source.
+   *
+   * Stubbing `globalThis.showDirectoryPicker` instead would prove nothing —
+   * both copies read the same global and would agree.
+   */
+  it('reads its static off the published class, not a second copy of it', async () => {
+    /* The third note is the footnote: "this browser does not remember the
+       folder", hidden exactly when the picker persists. jsdom has no
+       `showDirectoryPicker`, so it starts visible. */
+    const footnote = (root: Element) =>
+      root.querySelectorAll('.metacom-panel__note')[2]!.hasAttribute('hidden');
+
+    expect(footnote(render(MetacomPanel, { metacom: stub({ kind: 'ready' }), say: () => {} })))
+      .toBe(false);
+
+    const real = Object.getOwnPropertyDescriptor(MetacomProvider, 'supportsPersistentPicker')!;
+    Object.defineProperty(MetacomProvider, 'supportsPersistentPicker',
+      { configurable: true, get: () => true });
+    try {
+      const node = render(MetacomPanel, { metacom: stub({ kind: 'ready' }), say: () => {} });
+      await settle();
+      expect(footnote(node)).toBe(true);
+    } finally {
+      Object.defineProperty(MetacomProvider, 'supportsPersistentPicker', real);
+    }
+  });
+
+  /* The guard for the next component, which is cheaper than either of the
+     above and is the one that will catch it: a shipped `.svelte` may not name
+     `../src/` at all. Whatever it wants is either behind a published entry or
+     is not a thing a consumer can be given. */
+  it('names no ../src/ import in anything under svelte/', () => {
+    /* `process.cwd()` rather than `import.meta.url`, which is not a `file:`
+       URL under the jsdom environment this file runs in. vitest's cwd is the
+       package root. */
+    const dir = join(process.cwd(), 'svelte');
+    const offenders = readdirSync(dir)
+      .filter((name) => name.endsWith('.svelte') || name.endsWith('.ts'))
+      .flatMap((name) => {
+        const text = readFileSync(join(dir, name), 'utf8');
+        return [...text.matchAll(/^\s*(?:import|export)[^\n]*?from\s+'(\.\.\/src\/[^']+)'/gm)]
+          .map((m) => `${name}: ${m[1]}`);
+      });
+    expect(offenders).toEqual([]);
   });
 });

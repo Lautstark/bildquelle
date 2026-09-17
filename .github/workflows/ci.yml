@@ -40,14 +40,17 @@ jobs:
 
       - run: npm ci
 
+      # `npm run build` first, inside this: the components under `svelte/`
+      # import the package's published entries, so `tsc` and `svelte-check`
+      # cannot resolve them until `dist` exists. The script carries the build
+      # so this list cannot be put back in the wrong order by hand.
       - run: npm run typecheck
 
       # The licensing invariant is asserted here; a failure is a licence problem,
       # not just a broken test.
       - run: npm test
 
-      # Consumers install from git, so `prepare` runs both on their machine.
-      # They run here too so a pull request cannot break either.
-      - run: npm run build
-
+      # Consumers install from git, so `prepare` runs both builds on their
+      # machine. The first one has already run above; this is the other, here
+      # so a pull request cannot break it unseen.
       - run: npm run build:browser

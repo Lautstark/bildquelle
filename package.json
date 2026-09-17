@@ -58,7 +58,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json && svelte-check --tsconfig ./tsconfig.svelte.json",
+    "typecheck": "npm run build && tsc -p tsconfig.json && svelte-check --tsconfig ./tsconfig.svelte.json",
     "test": "vitest run",
     "prepare": "npm run build && npm run build:browser",
     "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"

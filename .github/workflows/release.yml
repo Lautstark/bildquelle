@@ -22,5 +22,14 @@ jobs:
       pull-requests: write
     uses: Lautstark/.github/.github/workflows/release.yml@main
     with:
-      gate: npm run typecheck && npm test && npm run build && npm run build:browser
+      # The build runs first, and that is not a preference. The shipped
+      # components under `svelte/` import this package's published entries
+      # rather than its own `src/` — see MetacomPanel.svelte's header — so
+      # `tsc` and `svelte-check` both need `dist` on disk before they can
+      # resolve `@lautstark/bildquelle`. `npm run typecheck` carries that build
+      # itself, so the order cannot be undone by rewriting this line, and it is
+      # why `npm run build` is not named here a second time. `build:browser` is
+      # the other half of `prepare`, which runs on a consumer's machine, and it
+      # stays in the gate so a change cannot break it unseen.
+      gate: npm run typecheck && npm test && npm run build:browser
     secrets: inherit

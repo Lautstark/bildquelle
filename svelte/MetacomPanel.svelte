@@ -44,13 +44,43 @@
    * reads off the provider is derived through it. The provider itself is never
    * a rune — a proxy around it would deep-watch an index of ten thousand file
    * names to learn what one callback already says.
+   *
+   * ## A component imports what a consumer imports
+   *
+   * Everything below comes from this package's published entries — never from
+   * `../src/`, however much shorter that is and however green it looks here.
+   * `exports["."]` points at `dist`, and `tsc` writes `#private;` into a
+   * class's declaration, so `src/metacom.ts`'s `MetacomProvider` and
+   * `dist/index.d.ts`'s are two nominally distinct types: a consumer holding
+   * the published one could not pass its own provider to this panel at all
+   * — „Type 'MetacomProvider' is missing the following properties from type
+   * 'MetacomProvider': #source, #entries, #byPath, #categories, and 18 more".
+   * There is no honest fix on the consumer's side, because `exports` has no
+   * `./src/*` entry to import instead.
+   *
+   * And it is not only types. This file reaches the class as a **value**, for
+   * `supportsPersistentPicker` — so the build succeeded and bildhaft measured
+   * two copies of `MetacomProvider` in its bundle, +12.9 kB raw and +3.7 kB gz,
+   * beside the one the product already had. The bundler resolves `../src/x.js`
+   * to `src/x.ts` and ships a second copy of every module a component reaches
+   * that way; pure functions and tables, so nothing misbehaves, and it is still
+   * a second copy. Reaching into `src` also drags everything beside it into the
+   * consumer's *type program*, which in one product forced its `target` up to
+   * ES2020.
+   *
+   * `WORDS` is the one import here a consumer never holds, and it still comes
+   * from `./metacom-panel` rather than from source: it shares `metacom-panel.ts`
+   * with `MetacomAction` and `PanelLang`, which are this panel's props, so
+   * leaving it behind would duplicate the module for nothing.
+   *
+   * `test/svelte-panels.test.ts` imports the same way and goes red if this
+   * stops being true.
    */
-  import { MetacomProvider } from '../src/metacom.js';
+  import { MetacomProvider, needsAttention } from '@lautstark/bildquelle';
   import {
     ALL_ACTIONS, WORDS, headlineFor, stateLineFor,
     type MetacomAction, type PanelLang,
-  } from '../src/metacom-panel.js';
-  import { needsAttention } from '../src/types.js';
+  } from '@lautstark/bildquelle/metacom-panel';
 
   let {
     metacom,

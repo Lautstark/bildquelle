@@ -215,6 +215,20 @@ your build. That needs no configuration beyond having
 Svelte library, and svelte `^5` is a peer dependency. Nothing under `svelte/`
 enters `dist`, and the vanilla panel stays for as long as anybody is using it.
 
+They import `@lautstark/bildquelle` and `@lautstark/bildquelle/metacom-panel` —
+the same entries you do — so the `MetacomProvider` you hold **is** the one
+`MetacomPanel` declares, and there is one copy of it in your bundle. They used
+to import this package's own `src/`, which typechecks here and nowhere else:
+`tsc` writes `#private;` into a class declaration, so a provider from `dist`
+could not be passed to a panel declaring one from source, and the build that
+did succeed shipped the class twice. On a pin from before the release that
+fixed it — the CHANGELOG says which — you see
+
+    Type 'MetacomProvider' is missing the following properties from type
+    'MetacomProvider': #source, #entries, #byPath, #categories, and 18 more.
+
+and the fix is the version, not a cast at your call site.
+
 ### What a candidate says about a symbol
 
 A `Candidate` is `id`, `label`, `score` — and, since 2.1.0, two optional fields
