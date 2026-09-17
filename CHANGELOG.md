@@ -1,3 +1,9 @@
+## [2.4.0](https://github.com/Lautstark/bildquelle/compare/v2.3.2...v2.4.0) (2026-09-17)
+
+### Features
+
+* **search:** a between slot, for a picker with rows under its field ([d4034ff](https://github.com/Lautstark/bildquelle/commit/d4034ff679e5e3c44576f555fea6d2ce2aa2c34a))
+
 ## [2.3.2](https://github.com/Lautstark/bildquelle/compare/v2.3.1...v2.3.2) (2026-09-17)
 
 ### Bug Fixes
