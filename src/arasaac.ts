@@ -67,6 +67,15 @@ const NETWORK_MESSAGES: Record<LanguageCode, { status: (code: number) => string;
   en: { status: (code) => `ARASAAC answered with ${code}`, failed: 'Network error' },
 };
 
+/**
+ * How many object URLs this provider keeps alive at once - METACOM's number,
+ * for METACOM's reason. Each one holds its blob in memory until it is revoked,
+ * and a session spent searching visits far more pictures than any screen
+ * shows. The map used to grow for as long as the page was open; METACOM's had
+ * a bound from the start and this one simply never got it.
+ */
+const MAX_LIVE_URLS = 400;
+
 /** Extra words beyond the first — 0 for a single-word label. */
 const wordCount = (label: string) => Math.max(0, label.trim().split(/\s+/).length - 1);
 
@@ -135,6 +144,10 @@ export class ArasaacProvider implements SymbolProvider {
    * suffix getMonochromeImageUrl() files its own under.
    */
   #objectUrls = new Map<string, string>();
+  /* Pictures being fetched, by the same key, so two tiles asking for one
+     pictogram at once get one URL. Each used to make its own; the map kept
+     the second and the first was never revoked. */
+  #pendingImages = new Map<string, Promise<string | null>>();
   #inFlight = new Map<string, Promise<Candidate[]>>();
   #labels = new Map<string, string>();
   #lastError: string | null = null;
@@ -312,15 +325,22 @@ export class ArasaacProvider implements SymbolProvider {
   async #imageUrl(key: string, remote: string): Promise<string | null> {
     const cachedUrl = this.#objectUrls.get(key);
     if (cachedUrl) return cachedUrl;
+    const pending = this.#pendingImages.get(key);
+    if (pending) return pending;
+
+    const task = this.#loadImage(key, remote).finally(() => {
+      if (this.#pendingImages.get(key) === task) this.#pendingImages.delete(key);
+    });
+    this.#pendingImages.set(key, task);
+    return task;
+  }
+
+  async #loadImage(key: string, remote: string): Promise<string | null> {
 
     // The cache failing is the cache being empty - see #doSearch. A host waits
     // on this for an <img>, and a rejection there is a spinner for good.
     const stored = await arasaacCache.readImage(key).catch(() => null);
-    if (stored) {
-      const url = URL.createObjectURL(stored);
-      this.#objectUrls.set(key, url);
-      return url;
-    }
+    if (stored) return this.#keep(key, stored);
 
     try {
       const res = await fetch(remote);
@@ -331,13 +351,25 @@ export class ArasaacProvider implements SymbolProvider {
       const blob = await res.blob();
       // Not keeping it is no reason not to show it: the bytes are already here.
       await arasaacCache.writeImage(key, blob).catch(() => {});
-      const url = URL.createObjectURL(blob);
-      this.#objectUrls.set(key, url);
-      return url;
+      return this.#keep(key, blob);
     } catch {
       // Fall back to the remote URL; the browser may still have it in HTTP cache.
       return remote;
     }
+  }
+
+  /** One object URL, filed under its key, with the oldest let go past the bound. */
+  #keep(key: string, blob: Blob): string {
+    if (this.#objectUrls.size >= MAX_LIVE_URLS) {
+      const oldest = this.#objectUrls.keys().next().value;
+      if (oldest !== undefined) {
+        URL.revokeObjectURL(this.#objectUrls.get(oldest)!);
+        this.#objectUrls.delete(oldest);
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    this.#objectUrls.set(key, url);
+    return url;
   }
 
   async labelFor(id: string): Promise<string | null> {

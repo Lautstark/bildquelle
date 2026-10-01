@@ -258,6 +258,41 @@ describe('ArasaacProvider', () => {
     expect(await new ArasaacProvider().labelFor('9002')).toBeNull();
   });
 
+  /*
+   * Two tiles showing one pictogram ask for it together. Each used to make
+   * its own object URL; the map kept the second and the first stayed live,
+   * holding its blob, with nothing left that would revoke it.
+   */
+  it('makes one URL for one picture asked for twice at once', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(
+      { ok: true, status: 200, blob: () => Promise.resolve(new Blob(['png'])) } as unknown as Response,
+    )));
+    const made = vi.spyOn(URL, 'createObjectURL');
+    const arasaac = new ArasaacProvider();
+
+    const [first, second] = await Promise.all([
+      arasaac.getImageUrl('9100'), arasaac.getImageUrl('9100'),
+    ]);
+    expect(second).toBe(first);
+    expect(made).toHaveBeenCalledTimes(1);
+  });
+
+  /* METACOM had a bound on its live URLs from the start; this map grew for as
+     long as the page was open, one blob held in memory per picture seen. */
+  it('keeps no more than four hundred pictures alive at once', async () => {
+    vi.spyOn(arasaacCache, 'readImage').mockResolvedValue(new Blob(['png']));
+    const revoked = vi.spyOn(URL, 'revokeObjectURL');
+    const arasaac = new ArasaacProvider();
+
+    const first = await arasaac.getImageUrl('0');
+    for (let id = 1; id < 400; id++) await arasaac.getImageUrl(String(id));
+    expect(revoked).not.toHaveBeenCalled();
+
+    await arasaac.getImageUrl('400');
+    expect(revoked).toHaveBeenCalledTimes(1);
+    expect(revoked).toHaveBeenCalledWith(first);
+  });
+
   it('recovers a label for a symbol restored from storage', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse([
       { _id: 40, keywords: [{ keyword: 'Katze' }] },
