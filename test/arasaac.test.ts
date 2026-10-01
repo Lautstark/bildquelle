@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArasaacProvider } from '../src/arasaac.js';
+import { arasaacCache } from '../src/storage.js';
 
 interface Pictogram {
   _id: number;
@@ -220,6 +221,41 @@ describe('ArasaacProvider', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 503 } as unknown as Response)));
     expect(await new ArasaacProvider().getMonochromeImageUrl('8125'))
       .toBe('https://api.arasaac.org/api/pictograms/8125?download=false&color=false&resolution=500');
+  });
+
+  /*
+   * The database is shared with a sibling program that can close, upgrade or
+   * lock it, and a private window may refuse it outright. The cache calls sat
+   * outside the try, so on those days search() threw - against its own
+   * contract - and never asked the network, which was there all along.
+   */
+  it('searches the network when the cache cannot be read or written', async () => {
+    const closing = new DOMException('The database connection is closing.', 'InvalidStateError');
+    vi.spyOn(arasaacCache, 'readSearch').mockRejectedValue(closing);
+    vi.spyOn(arasaacCache, 'writeSearch').mockRejectedValue(closing);
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse([
+      { _id: 77, keywords: [{ keyword: 'Birne' }] },
+    ]))));
+
+    const hits = await new ArasaacProvider().search('Birne');
+    expect(hits.map((h) => h.id)).toEqual(['77']);
+  });
+
+  it('shows a picture when the cache cannot be read or written', async () => {
+    const closing = new DOMException('The database connection is closing.', 'InvalidStateError');
+    vi.spyOn(arasaacCache, 'readImage').mockRejectedValue(closing);
+    vi.spyOn(arasaacCache, 'writeImage').mockRejectedValue(closing);
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(
+      { ok: true, status: 200, blob: () => Promise.resolve(new Blob(['png'])) } as unknown as Response,
+    )));
+
+    // The bytes arrived; not being able to keep them is no reason to drop them.
+    expect(await new ArasaacProvider().getImageUrl('9001')).toMatch(/^blob:/);
+  });
+
+  it('has no caption, rather than an error, when the cache cannot be read', async () => {
+    vi.spyOn(arasaacCache, 'findLabel').mockRejectedValue(new Error('closed'));
+    expect(await new ArasaacProvider().labelFor('9002')).toBeNull();
   });
 
   it('recovers a label for a symbol restored from storage', async () => {

@@ -200,8 +200,19 @@ export class ArasaacProvider implements SymbolProvider {
    * is not tidiness: a search started in German and awaited across a language
    * switch would otherwise write its German results under the English key.
    */
+  /*
+   * Every touch of the cache is allowed to fail and none of them is allowed
+   * to take the search down with it. types.ts says search() must not throw,
+   * and storage.ts says why that is not hypothetical: IndexedDB is shared with
+   * a sibling program that can close, upgrade or lock it under us, and a
+   * private window may refuse it outright. The cache read and write sat
+   * outside the try, so on exactly those days a search threw - without ever
+   * asking the network, which was there the whole time. A cache that cannot
+   * be read is a cache that is empty, and one that cannot be written is one
+   * that will be asked again next time.
+   */
   async #doSearch(lang: LanguageCode, key: string): Promise<Candidate[]> {
-    const cached = await arasaacCache.readSearch(lang, key);
+    const cached = await arasaacCache.readSearch(lang, key).catch(() => undefined);
     if (cached && Date.now() - cached.ts < SEARCH_TTL_MS) {
       this.#rememberLabels(lang, cached.candidates);
       return cached.candidates;
@@ -230,7 +241,7 @@ export class ArasaacProvider implements SymbolProvider {
       return [];
     }
 
-    await arasaacCache.writeSearch(lang, key, candidates);
+    await arasaacCache.writeSearch(lang, key, candidates).catch(() => {});
     this.#rememberLabels(lang, candidates);
     return candidates;
   }
@@ -302,7 +313,9 @@ export class ArasaacProvider implements SymbolProvider {
     const cachedUrl = this.#objectUrls.get(key);
     if (cachedUrl) return cachedUrl;
 
-    const stored = await arasaacCache.readImage(key);
+    // The cache failing is the cache being empty - see #doSearch. A host waits
+    // on this for an <img>, and a rejection there is a spinner for good.
+    const stored = await arasaacCache.readImage(key).catch(() => null);
     if (stored) {
       const url = URL.createObjectURL(stored);
       this.#objectUrls.set(key, url);
@@ -316,7 +329,8 @@ export class ArasaacProvider implements SymbolProvider {
       // failure through onError instead of leaving a spinner up forever.
       if (!res.ok) return remote;
       const blob = await res.blob();
-      await arasaacCache.writeImage(key, blob);
+      // Not keeping it is no reason not to show it: the bytes are already here.
+      await arasaacCache.writeImage(key, blob).catch(() => {});
       const url = URL.createObjectURL(blob);
       this.#objectUrls.set(key, url);
       return url;
@@ -331,7 +345,8 @@ export class ArasaacProvider implements SymbolProvider {
     const known = this.#labels.get(`${lang}:${id}`);
     if (known) return known;
 
-    const found = await arasaacCache.findLabel(id, lang);
+    // A caption, from the cache alone: the cache failing means there is none.
+    const found = await arasaacCache.findLabel(id, lang).catch(() => null);
     if (found) this.#labels.set(`${lang}:${id}`, found);
     return found;
   }
