@@ -219,8 +219,26 @@
     const now = metacom.status();
     if (now.kind === 'needs-setup' && now.code === 'permission-needed'
         && await metacom.requestPermission()) return;
-    if (MetacomProvider.supportsPersistentPicker) await metacom.pickDirectory();
-    else folderInput.click();
+    await metacom.pickDirectory();
+  }
+
+  /**
+   * The press itself, which decides whether there is a task to run at all.
+   *
+   * Without a persistent picker the press only opens the file input, and
+   * opening it reads nothing: the folder arrives in the input's `change`,
+   * which runs `useFileList` through `run` itself. Clicked from inside `run`,
+   * the task finished the moment the dialog opened, and the panel announced
+   * the folder read — and called `after('choose')` — before anything was
+   * picked. Synchronous, in the press, because Firefox and Safari open a file
+   * dialog only inside the gesture that asked for it. The vanilla panel's
+   * `pressChoose` has the longer account.
+   */
+  function pressChoose(): void {
+    const now = metacom.status();
+    const confirming = now.kind === 'needs-setup' && now.code === 'permission-needed';
+    if (!confirming && !MetacomProvider.supportsPersistentPicker) folderInput.click();
+    else void run('choose', choose);
   }
 
   /**
@@ -282,7 +300,7 @@
         type="button"
         class="btn sm {permission || !ready ? 'primary' : 'quiet'}"
         disabled={busy}
-        onclick={() => void run('choose', choose)}
+        onclick={pressChoose}
       >{permission ? words.confirm : ready ? words.chooseAnother : words.choose}</button
       >{/if}{#if actions.includes('zip')}<button
         type="button" class="btn sm quiet" disabled={busy} onclick={() => zipInput.click()}

@@ -10,7 +10,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRawSnippet, mount, unmount } from 'svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 /* Every import below is one a consumer can write, and that is the point rather
  * than tidiness. The components used to import `../src/`, which is green here
  * — the source is right there — and red in every product, because `exports`
@@ -171,6 +171,36 @@ describe('svelte/MetacomPanel is the twin of the vanilla panel', () => {
     expect(licence(twin)).toBe(licence(vanilla.node));
     expect(licence(twin)).toContain('überträgt niemals METACOM-Dateien');
     vanilla.dispose();
+  });
+
+  /* The vanilla panel's case, for the twin's own copy of the press: without a
+     persistent picker, opening the file input reads nothing, and announcing
+     the folder read - or calling after('choose') - before it is picked was
+     the bug. */
+  it('says nothing until a folder has actually been picked', async () => {
+    const said: string[] = [];
+    const after = vi.fn();
+    const node = render(MetacomPanel, {
+      metacom: stub({ kind: 'needs-setup', code: 'no-folder' }),
+      say: (line: string) => said.push(line),
+      after,
+    });
+    await settle();
+    const input = node.querySelector<HTMLInputElement>('input[webkitdirectory]')!;
+    const opened = vi.fn();
+    input.addEventListener('click', (event) => { event.preventDefault(); opened(); });
+
+    node.querySelector<HTMLButtonElement>('.acts button')!.click();
+    await settle();
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(said).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'ja.png')], configurable: true });
+    // Bubbling, as the browser's is: Svelte listens for `change` at the root.
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(said).toEqual(['METACOM-Ordner eingelesen.']));
+    expect(after).toHaveBeenCalledWith('choose');
   });
 
   it('unsubscribes when it goes, without a dispose() to call', async () => {

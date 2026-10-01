@@ -49,7 +49,11 @@ function stub(status: ProviderStatus, facts: { count?: number; root?: string } =
 
 const mount = (
   provider: ReturnType<typeof stub>,
-  extra: { lang?: PanelLang | (() => PanelLang); actions?: readonly MetacomAction[] } = {},
+  extra: {
+    lang?: PanelLang | (() => PanelLang);
+    actions?: readonly MetacomAction[];
+    after?: (action: MetacomAction) => void | Promise<void>;
+  } = {},
 ) => {
   const said: [string, MetacomAction][] = [];
   const heads: string[] = [];
@@ -234,6 +238,35 @@ describe('the one way in', () => {
     choose.click();
     await vi.waitFor(() => expect(provider.requestPermission).toHaveBeenCalled());
     expect(provider.pickDirectory).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Firefox and Safari have no persistent picker, so the press opens a file
+   * input - and opening it reads nothing. The click used to happen inside
+   * run(), which finished the moment the dialog opened: „METACOM-Ordner
+   * eingelesen." and after('choose') before anybody had picked a thing.
+   */
+  it('says nothing until a folder has actually been picked', async () => {
+    const provider = stub({ kind: 'needs-setup', code: 'no-folder' });
+    const after = vi.fn();
+    const { panel, said } = mount(provider, { after });
+    const input = panel.node.querySelector<HTMLInputElement>('input[webkitdirectory]')!;
+    const opened = vi.fn();
+    input.addEventListener('click', (event) => { event.preventDefault(); opened(); });
+
+    buttons(panel)[0]!.click();
+    await new Promise((done) => { setTimeout(done, 0); });
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(said).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+
+    // The folder arrives in `change`, and that is what gets announced - once.
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'ja.png')], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(said).toHaveLength(1));
+    expect(provider.useFileList).toHaveBeenCalledTimes(1);
+    expect(after).toHaveBeenCalledWith('choose');
+    expect(said[0]).toEqual(['METACOM-Ordner eingelesen.', 'choose']);
   });
 
   it('names itself for what is missing', () => {

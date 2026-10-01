@@ -512,8 +512,31 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
     const status = metacom.status();
     if (status.kind === 'needs-setup' && status.code === 'permission-needed'
         && await metacom.requestPermission()) return;
-    if (MetacomProvider.supportsPersistentPicker) await metacom.pickDirectory();
-    else folderInput.click();
+    await metacom.pickDirectory();
+  }
+
+  /**
+   * The press itself, which decides whether there is a task to run at all.
+   *
+   * Where the browser has no persistent picker the press only opens the file
+   * input, and opening it is not reading anything: the folder arrives later,
+   * in the input's `change`, which runs `useFileList` through `run` itself.
+   * Clicking the input from inside `run` — as this did — finished the task the
+   * moment the dialog opened, so the panel announced „METACOM-Ordner
+   * eingelesen." and handed the product `after('choose')` before anybody had
+   * picked a thing, and again when they had. The ZIP button never had the
+   * problem, because it already clicked its input outside `run`.
+   *
+   * Clicked synchronously, in the press, because Firefox and Safari open a
+   * file dialog only inside the gesture that asked for it. A stored handle to
+   * re-confirm is the one case that still goes through `choose`, and it can
+   * only exist where the persistent picker does.
+   */
+  function pressChoose(): void {
+    const status = metacom.status();
+    const confirming = status.kind === 'needs-setup' && status.code === 'permission-needed';
+    if (!confirming && !MetacomProvider.supportsPersistentPicker) folderInput.click();
+    else void run('choose', choose);
   }
 
   /**
@@ -596,7 +619,7 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
         permission ? say.confirm : ready ? say.chooseAnother : say.choose,
         permission || !ready ? 'primary' : 'quiet',
         true,
-        () => void run('choose', choose),
+        pressChoose,
       ));
     }
     if (offered.includes('zip')) {
