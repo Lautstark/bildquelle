@@ -31,8 +31,9 @@ anything printed or exported:
 > Piktogramme: ARASAAC (arasaac.org), CC BY-NC-SA.
 > Autor: Sergio Palao. Urheber: Regierung von Aragón (Spanien).
 
-The text ships as `ARASAAC_ATTRIBUTION` and as `arasaac.attribution`, so no
-consumer has to retype it. For output that mixes sources — a vorlaut board with
+The text ships as `ARASAAC_ATTRIBUTIONS`, keyed by language (`de`, `en`), and
+as `arasaac.attribution`, which is the notice in the provider's current
+language, so no consumer has to retype it. For output that mixes sources — a vorlaut board with
 both ARASAAC and METACOM keys on it — `attributionsFor(ids)` returns the notices
 actually owed.
 
@@ -186,7 +187,7 @@ re-requested per component.
 | `SymbolProvider` | `status`, `isReady`, `search(query)`, `getImageUrl(id)`, `labelFor(id)`, `attribution`. |
 | `ArasaacProvider`, `ARASAAC_ATTRIBUTIONS` | The class, and the licence notice as text, per language. Adds `getMonochromeImageUrl(id)`, ARASAAC's own greyscale rendering of a pictogram — for a key drawn light-on-dark, where mapping luminance onto two tones only holds on a greyscale source. Not on `SymbolProvider`: METACOM ships a separate black-and-white *symbol* (`haus4SW` beside `haus4`) rather than a rendering option, so the two sources cannot answer one question. |
 | `LanguageCode`, `LANGUAGES`, `setSymbolLanguage(lang)`, `symbolLanguage()` | Which language sentences are read in and ARASAAC is searched in. See below. |
-| `MetacomProvider` | Adds `pickDirectory`, `useDirectoryHandle`, `useFileList`, `useZip`, `restore`, `requestPermission`, `rebuildIndex`, `forget`, `subscribe`, `rootName`, `symbolCount`, and the static `supportsPersistentPicker`. |
+| `MetacomProvider` | Adds `pickDirectory`, `useDirectoryHandle`, `useFileList`, `useZip`, `restore`, `requestPermission`, `rebuildIndex`, `forget`, `subscribe`, `rootName`, `symbolCount`, `idForName(name)` (the id behind a stored name, exact or null), `renderings()` (the folders that tell identical file names apart), `preferRendering(segment)` and `preferredRendering` (order those renderings, never filter), and the static `supportsPersistentPicker`. |
 | `attributionsFor(ids)` | The licence notices owed by a set of providers, deduplicated. |
 | `clearAllProviderData()` | Drops everything stored: caches, index, folder handle. For a host's "delete all my data". |
 | `scoreLabel`, `foldGerman` | The matching helpers both providers use, exported for hosts that rank their own results the same way. |
