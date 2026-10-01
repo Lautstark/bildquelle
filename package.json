@@ -85,7 +85,7 @@
     "svelte-check": "^4.4.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=20"
