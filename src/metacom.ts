@@ -669,7 +669,6 @@ export class MetacomProvider implements SymbolProvider {
 /* ------------------------------------------------------------- helpers --- */
 
 async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: MetacomEntry[]): Promise<void> {
-  // @ts-expect-error - async iteration over directory handles is not in lib.dom yet
   for await (const [name, handle] of dir.entries()) {
     const path = prefix ? `${prefix}/${name}` : name;
     if (handle.kind === 'directory') {
