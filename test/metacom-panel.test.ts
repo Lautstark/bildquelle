@@ -205,6 +205,27 @@ describe('what is offered', () => {
     expect(buttons(panel).every((b) => !b.disabled)).toBe(true);
   });
 
+  /*
+   * The same rule, kept by the row itself. paint() runs on every status the
+   * provider emits and used to rebuild the buttons with replaceChildren, so
+   * the one somebody had tabbed to left the document on the next emit and
+   * focus fell to <body> - „Neu einlesen" emits twice on its own.
+   */
+  it('keeps the keyboard on the button it was on when the status moves', () => {
+    const provider = stub({ kind: 'ready' }, { root: 'METACOM_9' });
+    const { panel } = mount(provider);
+    document.body.append(panel.node);
+    const reread = buttons(panel)[2]!;
+    reread.focus();
+
+    provider.go({ kind: 'loading', code: 'indexing' });
+    provider.go({ kind: 'ready' });
+
+    expect(buttons(panel)[2]).toBe(reread);
+    expect(document.activeElement).toBe(reread);
+    panel.node.remove();
+  });
+
   /* There is a stored handle to drop in every state but „no folder yet" —
      including the two that need attention, which is exactly when somebody wants
      the button. */

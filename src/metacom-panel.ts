@@ -588,15 +588,40 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
    * state line directly above says which thing is missing, so there is nothing
    * a focusable-but-refusing button could explain that is not already said.
    */
-  function button(label: string, cls: string, enabled: boolean, press: () => void): HTMLElement {
+  function button(press: () => void): HTMLButtonElement {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = `btn sm ${cls}`;
-    b.textContent = label;
-    b.disabled = busy || !enabled;
     b.addEventListener('click', press);
     return b;
   }
+
+  /** What a button says and whether it can be pressed, written into the one
+   *  that is already there. */
+  function draw(b: HTMLButtonElement, label: string, cls: string, enabled: boolean): void {
+    b.className = `btn sm ${cls}`;
+    b.textContent = label;
+    b.disabled = busy || !enabled;
+  }
+
+  /*
+   * Made once, here, and only ever redrawn. paint() runs on every status the
+   * provider emits, and it used to build the row anew each time with
+   * `replaceChildren` — so the button somebody had tabbed to was taken out of
+   * the document under them on the next emit, and focus fell to <body>. That
+   * is the very failure the paragraph above says this row exists to prevent,
+   * committed by the row itself: „Neu einlesen" emits `indexing` and then
+   * `ready`, so pressing it from the keyboard lost the keyboard's place every
+   * time.
+   */
+  const pressed: Partial<Record<MetacomAction, HTMLButtonElement>> = {};
+  if (offered.includes('choose')) pressed.choose = button(pressChoose);
+  if (offered.includes('zip')) pressed.zip = button(() => zipInput.click());
+  if (offered.includes('reread')) {
+    pressed.reread = button(() => void run('reread', () => metacom.rebuildIndex()));
+  }
+  if (offered.includes('forget')) pressed.forget = button(() => void run('forget', () => metacom.forget()));
+  // In ALL_ACTIONS order, whatever order `actions` named them in — as before.
+  acts.append(...ALL_ACTIONS.flatMap((action) => pressed[action] ?? []));
 
   function paint(): void {
     const lang = langNow();
@@ -644,29 +669,23 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
       make('span', undefined, stateLineFor(status, metacom.symbolCount, root, lang)),
     );
 
-    const rows: HTMLElement[] = [];
-    if (offered.includes('choose')) {
-      rows.push(button(
+    if (pressed.choose) {
+      draw(
+        pressed.choose,
         permission ? say.confirm : ready ? say.chooseAnother : say.choose,
         permission || !ready ? 'primary' : 'quiet',
         true,
-        pressChoose,
-      ));
+      );
     }
-    if (offered.includes('zip')) {
-      rows.push(button(say.zip, 'quiet', true, () => zipInput.click()));
-    }
-    if (offered.includes('reread')) {
-      rows.push(button(say.reread, 'quiet', ready, () => void run('reread', () => metacom.rebuildIndex())));
-    }
-    if (offered.includes('forget')) {
+    if (pressed.zip) draw(pressed.zip, say.zip, 'quiet', true);
+    if (pressed.reread) draw(pressed.reread, say.reread, 'quiet', ready);
+    if (pressed.forget) {
       /* There is something to forget as soon as a handle is stored, which is
          every state except „no folder" — including the two that need attention,
          which is the whole reason somebody would want the button. */
       const stored = !(status.kind === 'needs-setup' && status.code === 'no-folder');
-      rows.push(button(say.forget, 'destructive', stored, () => void run('forget', () => metacom.forget())));
+      draw(pressed.forget, say.forget, 'destructive', stored);
     }
-    acts.replaceChildren(...rows);
 
     footnote.textContent = say.notRemembered;
     footnote.hidden = MetacomProvider.supportsPersistentPicker;
