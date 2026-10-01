@@ -212,13 +212,15 @@ export class MetacomProvider implements SymbolProvider {
    * user's folder, in this browser, for as long as the browser honours it.
    */
   async useDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-    this.#source = { kind: 'handle', handle };
-    // Only the handle is stored — a capability to read, not any file content.
-    await metacomStore.writeHandle(handle);
-    // A handle straight from the picker is granted; one carried over from
-    // elsewhere may need the user to confirm again, which needs a click.
-    if (!(await this.#ensureReadPermission(handle))) return;
-    await this.#buildIndexFromHandle(handle);
+    await this.#reading(async () => {
+      this.#source = { kind: 'handle', handle };
+      // Only the handle is stored — a capability to read, not any file content.
+      await metacomStore.writeHandle(handle);
+      // A handle straight from the picker is granted; one carried over from
+      // elsewhere may need the user to confirm again, which needs a click.
+      if (!(await this.#ensureReadPermission(handle))) return;
+      await this.#buildIndexFromHandle(handle);
+    });
   }
 
   /**
@@ -245,39 +247,73 @@ export class MetacomProvider implements SymbolProvider {
   /** Firefox/Safari path: <input type="file" webkitdirectory>. Session-only. */
   async useFileList(fileList: FileList | File[]): Promise<void> {
     this.#setStatus({ kind: 'loading', code: 'reading-folder' });
-    const files = new Map<string, File>();
-    const entries: MetacomEntry[] = [];
+    await this.#reading(async () => {
+      const files = new Map<string, File>();
+      const entries: MetacomEntry[] = [];
 
-    for (const file of Array.from(fileList)) {
-      const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-      if (!IMAGE_EXT.test(rel)) continue;
-      files.set(rel, file);
-      entries.push(makeEntry(rel));
-    }
+      for (const file of Array.from(fileList)) {
+        const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        if (!IMAGE_EXT.test(rel)) continue;
+        files.set(rel, file);
+        entries.push(makeEntry(rel));
+      }
 
-    const root = entries.length > 0 ? firstSegment(entries[0].path) : 'METACOM';
-    this.#source = { kind: 'files', files };
-    await metacomStore.writeIndex(root, entries);
-    this.#adopt(entries, root);
+      const root = entries.length > 0 ? firstSegment(entries[0].path) : 'METACOM';
+      this.#source = { kind: 'files', files };
+      await metacomStore.writeIndex(root, entries);
+      this.#adopt(entries, root);
+    });
   }
 
   /** Last-resort path: a zip of the user's own symbol folder, unpacked in-browser. */
   async useZip(file: File): Promise<void> {
     this.#setStatus({ kind: 'loading', code: 'unpacking-zip' });
-    // Loaded on demand: JSZip is large and only this fallback path needs it.
-    const { default: JSZip } = await import('jszip');
-    const zip = await JSZip.loadAsync(file);
-    const entries: MetacomEntry[] = [];
+    await this.#reading(async () => {
+      // Loaded on demand: JSZip is large and only this fallback path needs it.
+      const { default: JSZip } = await import('jszip');
+      const zip = await JSZip.loadAsync(file);
+      const entries: MetacomEntry[] = [];
 
-    zip.forEach((path, entry) => {
-      if (entry.dir || !IMAGE_EXT.test(path)) return;
-      entries.push(makeEntry(path));
+      zip.forEach((path, entry) => {
+        if (entry.dir || !IMAGE_EXT.test(path)) return;
+        entries.push(makeEntry(path));
+      });
+
+      this.#source = { kind: 'zip', zip };
+      const root = file.name.replace(/\.zip$/i, '');
+      await metacomStore.writeIndex(root, entries);
+      this.#adopt(entries, root);
     });
+  }
 
-    this.#source = { kind: 'zip', zip };
-    const root = file.name.replace(/\.zip$/i, '');
-    await metacomStore.writeIndex(root, entries);
-    this.#adopt(entries, root);
+  /**
+   * One way of taking in a folder, which either ends in a status or says why
+   * it did not.
+   *
+   * Each of the three ways in sets `loading` and then awaits things that can
+   * fail: a file that is not a ZIP at all, a ZIP JSZip cannot read, a browser
+   * whose IndexedDB refuses the index. The rejection reached the caller, and
+   * the status stayed `loading` - for good. A panel drew „Die ZIP-Datei wird
+   * entpackt …" for the rest of the session, under a row of buttons that had
+   * come back to life, and `needsAttention` said nothing was wrong.
+   *
+   * So a failure becomes `read-failed`, with what the platform said as its
+   * `detail` - the shape #buildIndexFromHandle has always used for a walk
+   * that fails - and is still thrown. The promise rejecting is what callers
+   * of 2.x already handle, and turning it into a quiet success would be a
+   * change in what these methods mean; the status is what was missing.
+   */
+  async #reading(work: () => Promise<void>): Promise<void> {
+    try {
+      await work();
+    } catch (err) {
+      this.#setStatus({
+        kind: 'error',
+        code: 'read-failed',
+        ...(err instanceof Error ? { detail: err.message } : {}),
+      });
+      throw err;
+    }
   }
 
   /** Forgets the folder, the index and every live URL. */
@@ -317,8 +353,12 @@ export class MetacomProvider implements SymbolProvider {
       return;
     }
     // Filenames only. This index stays on this machine, in this browser.
-    await metacomStore.writeIndex(handle.name, entries);
-    this.#adopt(entries, handle.name);
+    // Through #reading, because the walk was the only failure handled here and
+    // a refused write left `indexing` standing for good.
+    await this.#reading(async () => {
+      await metacomStore.writeIndex(handle.name, entries);
+      this.#adopt(entries, handle.name);
+    });
   }
 
   #adopt(entries: MetacomEntry[], rootName: string): void {

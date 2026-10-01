@@ -190,6 +190,31 @@ describe('adopting a different folder', () => {
   });
 });
 
+describe('a folder that cannot be taken in', () => {
+  /*
+   * Each way in sets `loading` and then awaits something that can fail. The
+   * rejection reached the caller and the status stayed `loading` for good: a
+   * panel said „Die ZIP-Datei wird entpackt …" for the rest of the session,
+   * and `needsAttention` said nothing was wrong.
+   */
+  it('says a ZIP it could not read is unreadable, and still rejects', async () => {
+    const metacom = new MetacomProvider();
+    await expect(metacom.useZip(new File(['not a zip'], 'METACOM.zip'))).rejects.toThrow();
+    const status = metacom.status();
+    expect(status).toMatchObject({ kind: 'error', code: 'read-failed' });
+    expect(status.kind === 'error' && status.detail).toBeTruthy();
+  });
+
+  it('says so when the browser will not keep the index', async () => {
+    vi.spyOn(metacomStore, 'writeIndex').mockRejectedValue(new Error('QuotaExceededError'));
+    const metacom = new MetacomProvider();
+    await expect(metacom.useFileList([fileAt('METACOM_9/ja.png')])).rejects.toThrow();
+    expect(metacom.status()).toEqual({
+      kind: 'error', code: 'read-failed', detail: 'QuotaExceededError',
+    });
+  });
+});
+
 describe('a picture still being read when its folder goes', () => {
   /*
    * A read is an await; forgetting or replacing a folder clears the live URLs
