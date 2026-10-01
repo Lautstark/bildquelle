@@ -65,6 +65,30 @@ export class MetacomProvider implements SymbolProvider {
   #categories: Map<string, readonly string[]> | null = null;
   #objectUrls = new Map<string, string>();
   /*
+   * Reads that have started and not yet finished, by id, so that a picture
+   * asked for twice before the first answer arrives is read once and gets one
+   * URL. Without it both callers read the file, both made an object URL, and
+   * the map kept the second - the first stayed live, holding its blob, with
+   * nothing left that would ever revoke it. A picker mounting a grid in which
+   * the same symbol appears twice did exactly that on every search.
+   */
+  #pending = new Map<string, Promise<string | null>>();
+  /*
+   * Which folder a read belongs to. Bumped by #revokeAll, which is to say
+   * every time the pictures this provider holds stop being the ones it may
+   * hand out - a folder forgotten, a folder replaced.
+   *
+   * A read is an await, and #revokeAll is not: forget() clears the map at
+   * once, and a read already under way used to come back afterwards and
+   * write its URL into the map it had just been cleared out of. That is a
+   * live blob: URL of a licensed picture, still answering for its path after
+   * the person said to stop reading the folder - and after a replacement,
+   * the previous folder's artwork answering for the new folder's path. A
+   * read that finds the generation moved returns null, as a picture that is
+   * not there does, and never makes a URL at all.
+   */
+  #generation = 0;
+  /*
    * The folders already opened, by their path under the collection root.
    *
    * Opening one is not free: it is a question put to the file system, and in a
@@ -604,9 +628,23 @@ export class MetacomProvider implements SymbolProvider {
   async getImageUrl(id: string): Promise<string | null> {
     const live = this.#objectUrls.get(id);
     if (live) return live;
+    const pending = this.#pending.get(id);
+    if (pending) return pending;
 
+    const task = this.#readUrl(id, this.#generation).finally(() => {
+      // Only its own entry: #revokeAll may have cleared it and a newer read
+      // of the same id may be in its place.
+      if (this.#pending.get(id) === task) this.#pending.delete(id);
+    });
+    this.#pending.set(id, task);
+    return task;
+  }
+
+  async #readUrl(id: string, generation: number): Promise<string | null> {
     const blob = await this.#readBlob(id);
     if (!blob) return null;
+    // Read from a folder this provider has since let go of. See #generation.
+    if (generation !== this.#generation) return null;
 
     // Bound the live set: object URLs hold their blob in memory until revoked.
     if (this.#objectUrls.size >= MAX_LIVE_URLS) {
@@ -671,6 +709,10 @@ export class MetacomProvider implements SymbolProvider {
   #revokeAll(): void {
     for (const url of this.#objectUrls.values()) URL.revokeObjectURL(url);
     this.#objectUrls.clear();
+    /* And every read still under way, which would otherwise put a URL back
+       into the map just emptied. See #generation. */
+    this.#generation += 1;
+    this.#pending.clear();
     /* With the pictures, because a remembered folder belongs to the source that
        was replaced: kept, it would read yesterday's collection. */
     this.#dirs.clear();

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { MetacomProvider } from '../src/metacom.js';
 import { metacomStore, type MetacomEntry } from '../src/storage.js';
 import { fileAt } from './helpers.js';
@@ -187,6 +187,86 @@ describe('adopting a different folder', () => {
     expect(await metacom.getImageUrl('Rendering_A/ja.png')).toBeNull();
     // And the URL handed out earlier must have been revoked with it.
     await expect(fetch(before!)).rejects.toThrow();
+  });
+});
+
+describe('a picture still being read when its folder goes', () => {
+  /*
+   * A read is an await; forgetting or replacing a folder clears the live URLs
+   * at once. A read already under way used to finish afterwards and write its
+   * URL back into the map it had just been cleared out of - a live blob: URL
+   * of a licensed picture the person had said to stop reading, answering for
+   * its path from then on.
+   */
+  it('hands out nothing from a folder forgotten mid-read', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([fileAt('METACOM_9/Essen/Apfel.png')]);
+    const made = vi.spyOn(URL, 'createObjectURL');
+
+    const reading = metacom.getImageUrl('METACOM_9/Essen/Apfel.png');
+    await metacom.forget();
+
+    expect(await reading).toBeNull();
+    // Not made and revoked: never made, so there is nothing to leak.
+    expect(made).not.toHaveBeenCalled();
+  });
+
+  it('does not let the previous folder answer for the new one’s path', async () => {
+    /* A folder on disk whose one file is slow to open, the way a large
+       collection is: the read is still out when the next folder arrives. */
+    let open!: () => void;
+    const opened = new Promise<void>((done) => { open = done; });
+    const slow = {
+      kind: 'directory',
+      name: 'METACOM_9',
+      async getFileHandle(name: string) {
+        return { kind: 'file', name, getFile: async () => {
+          await opened;
+          return new File(['first-folder'], name, { type: 'image/png' });
+        } };
+      },
+      async *entries() { yield ['ja.png', { kind: 'file', name: 'ja.png' }] as const; },
+    } as unknown as FileSystemDirectoryHandle;
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(slow);
+    const reading = metacom.getImageUrl('ja.png');
+
+    // The same path, in a folder picked while the first read was under way.
+    await metacom.useFileList([fileAt('ja.png', 'second-folder')]);
+    open();
+    expect(await reading).toBeNull();
+
+    const url = await metacom.getImageUrl('ja.png');
+    expect(await (await fetch(url!)).text()).toBe('second-folder');
+  });
+});
+
+describe('one picture asked for twice at once', () => {
+  /*
+   * A grid in which the same symbol appears twice asks for it twice before
+   * either answer is back. Both reads used to make an object URL and the map
+   * kept the second, so the first stayed live, holding its blob, with nothing
+   * left that would ever revoke it.
+   */
+  it('reads it once and hands both callers the one URL', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([fileAt('METACOM_9/Essen/Apfel.png')]);
+    const made = vi.spyOn(URL, 'createObjectURL');
+    const revoked = vi.spyOn(URL, 'revokeObjectURL');
+
+    const [first, second] = await Promise.all([
+      metacom.getImageUrl('METACOM_9/Essen/Apfel.png'),
+      metacom.getImageUrl('METACOM_9/Essen/Apfel.png'),
+    ]);
+    expect(first).toMatch(/^blob:/);
+    expect(second).toBe(first);
+    expect(made).toHaveBeenCalledTimes(1);
+
+    // And the one there is, is the one forgetting takes back.
+    await metacom.forget();
+    expect(revoked).toHaveBeenCalledWith(first);
   });
 });
 
