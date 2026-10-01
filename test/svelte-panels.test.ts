@@ -203,6 +203,38 @@ describe('svelte/MetacomPanel is the twin of the vanilla panel', () => {
     expect(after).toHaveBeenCalledWith('choose');
   });
 
+  /* The twin's copy of run(): a ZIP that would not read is a warning drawn
+     from the provider's status, not an unhandled rejection, and nothing is
+     announced or handed to the product. */
+  it('draws a ZIP that would not read as a warning, and announces nothing', async () => {
+    const metacom = new MetacomProvider();
+    const said: string[] = [];
+    const after = vi.fn();
+    const node = render(MetacomPanel, { metacom, say: (line: string) => said.push(line), after });
+    await settle();
+    const zip = node.querySelector<HTMLInputElement>('input[accept]')!;
+
+    Object.defineProperty(zip, 'files', { value: [new File(['not a zip'], 'METACOM.zip')], configurable: true });
+    zip.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const warning = node.querySelector<HTMLElement>('p.notice.bad:not(.standing)')!;
+    await vi.waitFor(() => expect(warning.hidden).toBe(false));
+    expect(warning.textContent).toContain('Der Ordner konnte nicht gelesen werden.');
+    expect(said).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('reports a fault instead of rejecting into nothing', async () => {
+    const fault = new Error('the product broke');
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const node = render(MetacomPanel, {
+      metacom: stub({ kind: 'ready' }), say: () => {}, after: () => { throw fault; },
+    });
+    await settle();
+    node.querySelectorAll<HTMLButtonElement>('.acts button')[2]!.click();
+    await vi.waitFor(() => expect(reported).toHaveBeenCalledWith(fault));
+  });
+
   it('unsubscribes when it goes, without a dispose() to call', async () => {
     let live = 0;
     /* The cast is `stub`'s, for `stub`'s reason: a spread of a class instance

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   headlineFor, metacomPanel, stateLineFor, type MetacomAction, type PanelLang,
 } from '../src/metacom-panel.js';
-import type { MetacomProvider } from '../src/metacom.js';
+import { MetacomProvider } from '../src/metacom.js';
 import { needsAttention } from '../src/types.js';
 import type { Failed, Loading, NeedsSetup, ProviderStatus } from '../src/types.js';
 
@@ -295,6 +295,64 @@ describe('what it says out loud', () => {
     buttons(panel).at(-1)!.click();
     await vi.waitFor(() => expect(said).toHaveLength(1));
     expect(said[0]![0]).toBe('Der METACOM-Ordner wird nicht mehr gelesen.');
+  });
+});
+
+describe('when an act fails', () => {
+  /*
+   * Every press discards run()'s promise, so run() rethrowing was an
+   * unhandled rejection and nothing else - and the provider stayed `loading`,
+   * so the panel went on saying the ZIP was being unpacked. A real provider
+   * here, because the half of this that matters is what it does with a file
+   * that is not a ZIP.
+   */
+  it('draws a ZIP that would not read as a warning, and announces nothing', async () => {
+    const metacom = new MetacomProvider();
+    const said: string[] = [];
+    const after = vi.fn();
+    const panel = metacomPanel({ metacom, say: (line) => said.push(line), after });
+    const zip = panel.node.querySelector<HTMLInputElement>('input[accept]')!;
+
+    Object.defineProperty(zip, 'files', { value: [new File(['not a zip'], 'METACOM.zip')], configurable: true });
+    zip.dispatchEvent(new Event('change'));
+
+    const warning = panel.node.querySelector<HTMLElement>('p.notice.bad:not(.standing)')!;
+    await vi.waitFor(() => expect(warning.hidden).toBe(false));
+    expect(warning.textContent).toContain('Der Ordner konnte nicht gelesen werden.');
+    await vi.waitFor(() => expect(buttons(panel)[0]!.disabled).toBe(false));
+    expect(said).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  /* The road that resolves instead of throwing: a walk that fails ends in
+     `read-failed` and returns. „Der Ordner wurde neu eingelesen." over a
+     warning that it could not be read was the panel contradicting itself. */
+  it('does not announce a folder that resolved into read-failed', async () => {
+    const provider = stub({ kind: 'ready' }, { root: 'METACOM_9' });
+    provider.rebuildIndex.mockImplementation(async () => {
+      provider.go({ kind: 'error', code: 'read-failed', detail: 'NotFoundError' });
+    });
+    const after = vi.fn();
+    const { panel, said } = mount(provider, { after });
+
+    buttons(panel)[2]!.click();
+    await vi.waitFor(() => expect(provider.rebuildIndex).toHaveBeenCalled());
+    await new Promise((done) => { setTimeout(done, 0); });
+    expect(said).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  /* What is left is a fault - here in the product's own `after` - and it goes
+     where an uncaught exception would, not into a promise nobody holds. */
+  it('reports a fault instead of rejecting into nothing', async () => {
+    const fault = new Error('the product broke');
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const provider = stub({ kind: 'ready' }, { root: 'METACOM_9' });
+    const { panel } = mount(provider, { after: () => { throw fault; } });
+
+    buttons(panel)[2]!.click();
+    await vi.waitFor(() => expect(reported).toHaveBeenCalledWith(fault));
+    expect(buttons(panel)[2]!.disabled).toBe(false);
   });
 });
 

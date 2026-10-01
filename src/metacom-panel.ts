@@ -482,6 +482,12 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
     paint();
     try {
       await task();
+      /* A folder that would not be walked resolves rather than throws — the
+         provider's answer to it is the `read-failed` status, which the state
+         line above is already drawing as a warning. Announcing „neu
+         eingelesen" over that, and telling the product the folder arrived, is
+         the one thing worse than saying nothing. */
+      if (failedToRead()) return;
       await options.after?.(action);
       const say = WORDS[langNow()];
       const done = action === 'choose' ? say.read
@@ -492,11 +498,36 @@ export function metacomPanel(options: MetacomPanelOptions): MetacomPanel {
     } catch (error) {
       // An abandoned picker is a normal user action, not a failure. All three
       // products had worked this out and written it in their own margin.
-      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+      if (!(error instanceof DOMException && error.name === 'AbortError')) report(error);
     } finally {
       busy = false;
       paint();
     }
+  }
+
+  /**
+   * A task that failed, said where it can be seen and not thrown into `void`.
+   *
+   * Every caller of `run` is a click handler that discards the promise, so a
+   * rethrow here was an unhandled rejection and nothing else: a ZIP that was
+   * not a ZIP reached nobody but the console's red line. What the person sees
+   * is the provider's status, which a failed read now turns into
+   * `read-failed` and the state line draws as a warning. Neither `after` nor
+   * `say` hears about it — both are written for a folder that arrived, and a
+   * product's `say` appends what the arrival did to its page.
+   *
+   * What is left is a fault, in the product's `after` or somewhere nobody
+   * expected, and that goes to `reportError` — the page's error handler and
+   * its console, as an uncaught exception would — rather than vanishing.
+   */
+  function report(error: unknown): void {
+    if (typeof reportError === 'function') reportError(error);
+    else console.error(error);
+  }
+
+  function failedToRead(): boolean {
+    const status = metacom.status();
+    return status.kind === 'error' && status.code === 'read-failed';
   }
 
   /**

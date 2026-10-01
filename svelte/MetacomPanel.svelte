@@ -191,6 +191,9 @@
     busy = true;
     try {
       await task();
+      /* A folder that would not be walked resolves rather than throws; its
+         `read-failed` is already drawn as a warning. See the vanilla `run`. */
+      if (failedToRead()) return;
       await after?.(action);
       const done = action === 'choose' ? words.read
         : action === 'zip' ? words.zipRead
@@ -200,10 +203,30 @@
     } catch (error) {
       // An abandoned picker is a normal user action, not a failure. All three
       // products had worked this out and written it in their own margin.
-      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+      if (!(error instanceof DOMException && error.name === 'AbortError')) report(error);
     } finally {
       busy = false;
     }
+  }
+
+  /**
+   * A task that failed, said where it can be seen and not thrown into `void`.
+   *
+   * Every caller of `run` discards its promise, so a rethrow was an unhandled
+   * rejection and nothing else. A failed read is the provider's `read-failed`
+   * status, drawn above as a warning; neither `after` nor `say` hears of it,
+   * because both are written for a folder that arrived. Anything else is a
+   * fault and goes to `reportError`, as an uncaught exception would. The
+   * vanilla panel's `report` has the longer account.
+   */
+  function report(error: unknown): void {
+    if (typeof reportError === 'function') reportError(error);
+    else console.error(error);
+  }
+
+  function failedToRead(): boolean {
+    const now = metacom.status();
+    return now.kind === 'error' && now.code === 'read-failed';
   }
 
   /**
