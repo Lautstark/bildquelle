@@ -213,12 +213,38 @@ export class MetacomProvider implements SymbolProvider {
    */
   async useDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
     await this.#reading(async () => {
+      /*
+       * A different folder takes the previous one's index with it — here, and
+       * not only when the new one has been walked.
+       *
+       * The walk is the usual way the old index goes (#adopt replaces it), and
+       * it is skipped when the new handle still needs a click. Everything of
+       * the old folder then stayed: its entries went on answering search(),
+       * its open folders went on serving pictures by path, the panel named
+       * the old root above „Zugriff bestätigen" - and the stored index, still
+       * the old folder's, was what restore() adopted once the click came,
+       * filed under the new handle. Ids from one licensed folder resolved
+       * against another.
+       *
+       * The same folder handed over again keeps both: dropping its stored
+       * index would cost a re-walk of ten thousand files for nothing.
+       */
+      const current = this.#source.kind === 'handle' ? this.#source.handle : null;
+      const stored = await metacomStore.readHandle().catch(() => null);
+      if (!(await sameFolder(current, handle))) this.#letGo(handle.name);
+      const keepIndex = await sameFolder(stored, handle);
+
       this.#source = { kind: 'handle', handle };
       // Only the handle is stored — a capability to read, not any file content.
       await metacomStore.writeHandle(handle);
       // A handle straight from the picker is granted; one carried over from
       // elsewhere may need the user to confirm again, which needs a click.
-      if (!(await this.#ensureReadPermission(handle))) return;
+      if (!(await this.#ensureReadPermission(handle))) {
+        // Empty rather than deleted: restore() reads an empty index as „walk
+        // the folder", which is the answer for a folder never walked.
+        if (!keepIndex) await metacomStore.writeIndex(handle.name, []);
+        return;
+      }
       await this.#buildIndexFromHandle(handle);
     });
   }
@@ -318,12 +344,8 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Forgets the folder, the index and every live URL. */
   async forget(): Promise<void> {
-    this.#revokeAll();
+    this.#letGo('');
     this.#source = { kind: 'none' };
-    this.#entries = [];
-    this.#byPath.clear();
-    this.#categories = null;
-    this.#rootName = '';
     await metacomStore.clear();
     this.#setStatus(
       { kind: 'needs-setup', code: 'no-folder' },
@@ -359,6 +381,15 @@ export class MetacomProvider implements SymbolProvider {
       await metacomStore.writeIndex(handle.name, entries);
       this.#adopt(entries, handle.name);
     });
+  }
+
+  /** Everything held about the current folder, dropped in memory. */
+  #letGo(rootName: string): void {
+    this.#revokeAll();
+    this.#entries = [];
+    this.#byPath.clear();
+    this.#categories = null;
+    this.#rootName = rootName;
   }
 
   #adopt(entries: MetacomEntry[], rootName: string): void {
@@ -769,6 +800,27 @@ async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: Metacom
     } else if (IMAGE_EXT.test(name)) {
       out.push(makeEntry(path));
     }
+  }
+}
+
+/**
+ * Whether two handles are one folder on disk.
+ *
+ * Asked of the browser rather than of `===`: a handle read back out of
+ * IndexedDB is a new object every time, and so is one a host carries over.
+ * Anything that cannot answer — a handle from before `isSameEntry`, or none
+ * at all — is a different folder, because the cost of being wrong that way is
+ * one walk, and the cost the other way is the wrong licensed artwork.
+ */
+async function sameFolder(known: unknown, handle: FileSystemDirectoryHandle): Promise<boolean> {
+  if (!known) return false;
+  if (known === handle) return true;
+  const asked = known as Partial<FileSystemHandle>;
+  if (typeof asked.isSameEntry !== 'function') return false;
+  try {
+    return await asked.isSameEntry(handle);
+  } catch {
+    return false;
   }
 }
 

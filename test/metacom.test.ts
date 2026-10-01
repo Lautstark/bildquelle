@@ -215,6 +215,58 @@ describe('a folder that cannot be taken in', () => {
   });
 });
 
+describe('a different folder that still needs a click', () => {
+  /*
+   * A handle a host carries over may need the person to confirm access, and
+   * until they do nothing is walked. The previous folder's index used to stay
+   * for that whole time: still answering search(), still serving pictures,
+   * still named in the panel - and still the stored index, which restore()
+   * adopted once the click came, filed under the new handle.
+   */
+  const folder = (name: string, files: string[], permission: { state: PermissionState }) => ({
+    kind: 'directory',
+    name,
+    queryPermission: async () => permission.state,
+    async getFileHandle(file: string) {
+      if (!files.includes(file)) throw new Error('no such file');
+      return { kind: 'file', name: file, getFile: async () => new File([name], file) };
+    },
+    async *entries() { for (const file of files) yield [file, { kind: 'file', name: file }] as const; },
+  }) as unknown as FileSystemDirectoryHandle;
+
+  it('lets go of the previous folder before the new one is confirmed', async () => {
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([fileAt('Alt/ja.png')]);
+    expect(await metacom.search('ja')).toHaveLength(1);
+
+    await metacom.useDirectoryHandle(folder('Neu', ['ja.png'], { state: 'prompt' }));
+
+    expect(metacom.status()).toEqual({ kind: 'needs-setup', code: 'permission-needed' });
+    expect(await metacom.search('ja')).toEqual([]);
+    expect(await metacom.getImageUrl('Alt/ja.png')).toBeNull();
+    expect(metacom.rootName).toBe('Neu');
+    // And what restore() will adopt after the click is a walk, not the old list.
+    expect(await metacomStore.readIndex()).toMatchObject({ rootName: 'Neu', entries: [] });
+  });
+
+  it('keeps the index of the same folder handed over again', async () => {
+    const permission = { state: 'granted' as PermissionState };
+    const same = folder('METACOM_9', ['ja.png', 'nein.png'], permission);
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    vi.spyOn(metacomStore, 'readHandle').mockResolvedValue(same);
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(same);
+    expect(metacom.symbolCount).toBe(2);
+
+    permission.state = 'prompt';
+    await metacom.useDirectoryHandle(same);
+
+    expect(metacom.symbolCount).toBe(2);
+    expect((await metacomStore.readIndex())?.entries).toHaveLength(2);
+  });
+});
+
 describe('a picture still being read when its folder goes', () => {
   /*
    * A read is an await; forgetting or replacing a folder clears the live URLs
