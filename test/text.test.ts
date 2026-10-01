@@ -8,6 +8,18 @@ describe('foldGerman', () => {
     expect(foldGerman('Über Äpfel')).toBe('ueber aepfel');
   });
 
+  it('folds a decomposed umlaut the way it folds a typed one', () => {
+    // macOS stores file names decomposed - "A" and a combining diaeresis -
+    // and a ZIP made there keeps them so. Decomposed, the umlaut rule never
+    // fired and the lone diaeresis was stripped as punctuation, so the file
+    // "Äpfel" folded to "apfel" while the word typed folded to "aepfel".
+    const nfd = 'Äpfel'.normalize('NFD');
+    expect(nfd).not.toBe('Äpfel');
+    expect(foldGerman(nfd)).toBe('aepfel');
+    expect(foldGerman(nfd)).toBe(foldGerman('Äpfel'));
+    expect(scoreLabel(foldGerman('Äpfel'), foldGerman(nfd))).toBe(100);
+  });
+
   it('drops punctuation, which is what a typed sentence brings with it', () => {
     expect(foldGerman('Hallo!')).toBe('hallo');
     expect(foldGerman('Ich habe Durst.')).toBe('ich habe durst');

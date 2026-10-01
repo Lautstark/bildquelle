@@ -572,20 +572,31 @@ export class MetacomProvider implements SymbolProvider {
     }
   }
 
+  /*
+   * Both sides composed before they are compared, and that is not the
+   * forgiveness the paragraph above refuses. A name and a path that differ
+   * only in Unicode normalisation are the same characters: "Äpfel" written by
+   * a keyboard and "Äpfel" read off a Mac disk, where file names are stored
+   * decomposed. A collection copied between the two - which is exactly the
+   * move a stored name exists to survive - would otherwise turn every umlaut
+   * in it into a placeholder. Case and everything else stay exact.
+   */
   #idForPath(path: string): string | null {
-    const suffix = '/' + path;
+    const wanted = path.normalize('NFC');
+    const suffix = '/' + wanted;
     for (const entry of this.#entries) {
-      const stripped = entry.path.replace(IMAGE_EXT, '');
-      if (stripped === path || stripped.endsWith(suffix)) return entry.path;
+      const stripped = entry.path.replace(IMAGE_EXT, '').normalize('NFC');
+      if (stripped === wanted || stripped.endsWith(suffix)) return entry.path;
     }
     return null;
   }
 
   #idForStem(stem: string): string | null {
     if (!stem) return null;
+    const wanted = stem.normalize('NFC');
     for (const entry of this.#entries) {
       const base = entry.path.split('/').pop() ?? entry.path;
-      if (base.replace(IMAGE_EXT, '') === stem) return entry.path;
+      if (base.replace(IMAGE_EXT, '').normalize('NFC') === wanted) return entry.path;
     }
     return null;
   }
@@ -734,7 +745,16 @@ function makeEntry(path: string): MetacomEntry {
   const base = path.split('/').pop() ?? path;
   const stem = base.replace(IMAGE_EXT, '');
 
+  /*
+   * Composed, because the label is shown and searched while the path is not.
+   * A file name off a Mac disk, or out of a ZIP made on one, is decomposed:
+   * "Ä" is two code points. It renders the same, and it is not the same
+   * string - so a host comparing a label against its own text, or splitting
+   * it per character, sees a difference nobody can see. The path keeps the
+   * bytes the source gave it, because the path is what opens the file.
+   */
   const label = stem
+    .normalize('NFC')
     .replace(/[_]+/g, ' ')
     .replace(/(?<=\D)-(?=\D)/g, ' ')
     .replace(/[-\s]*\d+\s*$/, '') // trailing variant numbers: "Apfel-02" -> "Apfel"

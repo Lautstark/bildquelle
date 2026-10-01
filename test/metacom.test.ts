@@ -129,6 +129,42 @@ describe('MetacomProvider', () => {
   });
 });
 
+describe('a folder written on a Mac', () => {
+  /*
+   * macOS stores file names decomposed, and a ZIP made there carries them
+   * that way: "Ä" is "A" plus a combining diaeresis. It looks identical on
+   * screen and it is a different string, so a search typed on a keyboard and
+   * a reference stored as a composed name both missed a file the person could
+   * see in their own folder.
+   */
+  const nfd = (text: string) => text.normalize('NFD');
+
+  it('finds a decomposed file name by the word as it is typed', async () => {
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([fileAt(nfd('METACOM_9/Essen/Äpfel.png'))]);
+    const [hit] = await metacom.search('Äpfel');
+    expect(hit?.score).toBe(100);
+    // The label is composed, because it is shown and compared; the id keeps
+    // the bytes the folder gave it, because the id is what opens the file.
+    expect(hit?.label).toBe('Äpfel');
+    expect(hit?.id).toBe(nfd('METACOM_9/Essen/Äpfel.png'));
+    expect(await metacom.getImageUrl(hit!.id)).toMatch(/^blob:/);
+  });
+
+  it('resolves a composed stored name against a decomposed file, and back', async () => {
+    const mac = new MetacomProvider();
+    await mac.useFileList([fileAt(nfd('METACOM_9/Essen/Äpfel.png'))]);
+    expect(mac.idForName('Äpfel')).toBe(nfd('METACOM_9/Essen/Äpfel.png'));
+    expect(mac.idForName('Essen/Äpfel')).toBe(nfd('METACOM_9/Essen/Äpfel.png'));
+
+    const typed = new MetacomProvider();
+    await typed.useFileList([fileAt('METACOM_9/Essen/Äpfel.png')]);
+    expect(typed.idForName(nfd('Äpfel'))).toBe('METACOM_9/Essen/Äpfel.png');
+    // Still exact in everything but the encoding.
+    expect(typed.idForName('äpfel')).toBeNull();
+  });
+});
+
 describe('adopting a different folder', () => {
   /*
    * Picking a new folder replaces the index, and the pictures behind the old

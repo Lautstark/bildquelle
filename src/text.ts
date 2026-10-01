@@ -1,6 +1,15 @@
 /** Fold umlauts and ß, for forgiving comparison against symbol labels and filenames. */
 export function foldGerman(value: string): string {
   return value
+    // Composed first, because the lines below look for "ä" as ONE character.
+    // macOS writes file names decomposed - "A" followed by a combining
+    // diaeresis - and a ZIP made there carries them that way, so the same
+    // word arrives in two spellings that render identically. Decomposed, the
+    // "ä" rule never fires, the strip below then deletes the lone diaeresis
+    // as punctuation, and "Äpfel" off a Mac disk folds to "apfel" while the
+    // same word typed folds to "aepfel": a search that cannot find a file the
+    // person can see in their own folder. NFC is the form a keyboard types.
+    .normalize('NFC')
     .toLowerCase()
     .replace(/ä/g, 'ae')
     .replace(/ö/g, 'oe')
