@@ -1,3 +1,9 @@
+## [2.5.1](https://github.com/Lautstark/bildquelle/compare/v2.5.0...v2.5.1) (2026-10-31)
+
+### Bug Fixes
+
+* **symbole-panel:** focus lands on „Ordner wählen …“ once „Einrichten …“ has unfolded it ([0c455f9](https://github.com/Lautstark/bildquelle/commit/0c455f9e78f98308495622b21e5612e4edf3b054))
+
 ## [2.5.0](https://github.com/Lautstark/bildquelle/compare/v2.4.1...v2.5.0) (2026-10-31)
 
 ### Features
