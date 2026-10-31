@@ -22,6 +22,7 @@ import { MetacomProvider } from '@lautstark/bildquelle';
 import { metacomPanel } from '@lautstark/bildquelle/metacom-panel';
 import MetacomPanel from '../svelte/MetacomPanel.svelte';
 import SymbolSearch from '../svelte/SymbolSearch.svelte';
+import SymbolePanel from '../svelte/SymbolePanel.svelte';
 import ConsumerCallSite from './fixtures/ConsumerCallSite.svelte';
 import type { Candidate, ProviderStatus, SymbolProvider } from '@lautstark/bildquelle';
 
@@ -611,6 +612,140 @@ describe('svelte/SymbolSearch', () => {
  * are the fix for the blindness rather than for the defect, and all three go
  * red if somebody reaches into `src/` again.
  */
+describe('svelte/SymbolePanel', () => {
+  /* A provider that moves when it is asked to, and tells its subscribers. */
+  function live(initial: ProviderStatus) {
+    let status = initial;
+    const listeners = new Set<() => void>();
+    const move = (next: ProviderStatus) => { status = next; for (const l of listeners) l(); };
+    const provider = {
+      status: () => status,
+      isReady: () => status.kind === 'ready',
+      get symbolCount() { return status.kind === 'ready' ? 9214 : 0; },
+      rootName: 'METACOM_9_Desktop',
+      found: 0,
+      renderings: () => [],
+      subscribe: (l: () => void) => { listeners.add(l); return () => listeners.delete(l); },
+      requestPermission: vi.fn(async () => { move({ kind: 'ready' }); return true; }),
+      pickDirectory: vi.fn(async () => { move({ kind: 'ready' }); }),
+      useFileList: vi.fn(async () => { move({ kind: 'ready' }); }),
+      rebuildIndex: vi.fn(async () => {}),
+      forget: vi.fn(async () => { move({ kind: 'needs-setup', code: 'no-folder' }); }),
+    };
+    return { provider, metacom: provider as unknown as MetacomProvider, move };
+  }
+
+  const radios = (node: Element) =>
+    [...node.querySelectorAll<HTMLInputElement>('input[type=radio]')];
+  const button = (node: Element, label: string) =>
+    [...node.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === label);
+
+  /* A persistent picker, as Chrome has one. jsdom has none. */
+  function persistent(): () => void {
+    const real = Object.getOwnPropertyDescriptor(MetacomProvider, 'supportsPersistentPicker')!;
+    Object.defineProperty(MetacomProvider, 'supportsPersistentPicker', { configurable: true, get: () => true });
+    return () => Object.defineProperty(MetacomProvider, 'supportsPersistentPicker', real);
+  }
+
+  it('does not offer METACOM as an answer before its folder is read', async () => {
+    const node = render(SymbolePanel, {
+      metacom: live({ kind: 'needs-setup', code: 'no-folder' }).metacom,
+      current: 'arasaac', pick: () => {}, say: () => {},
+    });
+    await settle();
+    expect(radios(node).map((r) => r.value)).toEqual(['arasaac']);
+    expect(radios(node)[0]!.checked).toBe(true);
+    expect(node.querySelector('.answer.off .answer__tag')!.textContent).toBe('nicht eingerichtet');
+  });
+
+  it('unfolds one sentence, one button and the licence link, and no cancel', async () => {
+    const node = render(SymbolePanel, {
+      metacom: live({ kind: 'needs-setup', code: 'no-folder' }).metacom,
+      current: 'arasaac', pick: () => {}, say: () => {},
+    });
+    await settle();
+    button(node, 'Einrichten …')!.click();
+    await settle();
+    const more = node.querySelector('.answer__more')!;
+    expect(more.querySelector('p')!.textContent).toContain('Hast du nur die ZIP-Datei');
+    expect([...more.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Ordner wählen …']);
+    expect(more.querySelector('a')!.getAttribute('href')).toContain('metacom-symbole.de');
+  });
+
+  it('makes METACOM the answer once its folder has been read in', async () => {
+    const restore = persistent();
+    try {
+      const { metacom, provider } = live({ kind: 'needs-setup', code: 'no-folder' });
+      const pick = vi.fn();
+      const said: string[] = [];
+      const node = render(SymbolePanel, { metacom, current: 'arasaac', pick, say: (l: string) => said.push(l) });
+      await settle();
+      button(node, 'Einrichten …')!.click();
+      await settle();
+      button(node, 'Ordner wählen …')!.click();
+      await vi.waitFor(() => expect(pick).toHaveBeenCalledWith('metacom'));
+      expect(provider.pickDirectory).toHaveBeenCalledOnce();
+      expect(said).toEqual(['METACOM ist eingerichtet: 9.214 Symbole.']);
+    } finally {
+      restore();
+    }
+  });
+
+  it('draws a stored METACOM it cannot read as ARASAAC, and says so in the heading', async () => {
+    let head = '';
+    const node = render(SymbolePanel, {
+      metacom: live({ kind: 'needs-setup', code: 'permission-needed' }).metacom,
+      current: 'metacom', pick: () => {}, say: () => {}, headline: (text: string) => { head = text; },
+    });
+    await settle();
+    expect(radios(node).map((r) => [r.value, r.checked])).toEqual([['arasaac', true]]);
+    expect(head).toBe('ARASAAC');
+    expect(node.querySelector('.where.bad')!.textContent).toContain('METACOM_9_Desktop');
+    expect(button(node, 'Zugriff erlauben')).toBeDefined();
+  });
+
+  it('names a folder with no METACOM in it and offers another', async () => {
+    const node = render(SymbolePanel, {
+      metacom: live({ kind: 'error', code: 'no-images' }).metacom,
+      current: 'arasaac', pick: () => {}, say: () => {},
+    });
+    await settle();
+    expect(node.querySelector('.where.bad b')!.textContent).toBe('In „METACOM_9_Desktop“ ist kein METACOM.');
+    expect(button(node, 'Anderen Ordner wählen …')).toBeDefined();
+  });
+
+  it('hands a picked card to the host', async () => {
+    const pick = vi.fn();
+    let head = '';
+    const node = render(SymbolePanel, {
+      metacom: live({ kind: 'ready' }).metacom, current: 'metacom', pick, say: () => {},
+      headline: (text: string) => { head = text; },
+    });
+    await settle();
+    expect(radios(node).map((r) => [r.value, r.checked])).toEqual([['arasaac', false], ['metacom', true]]);
+    expect(head).toBe('METACOM · 9.214 Symbole');
+    radios(node)[0]!.click();
+    expect(pick).toHaveBeenCalledWith('arasaac');
+  });
+
+  it('forgets the folder from the ⋯, and ARASAAC is the answer again', async () => {
+    const { metacom, provider } = live({ kind: 'ready' });
+    const pick = vi.fn();
+    const said: string[] = [];
+    const node = render(SymbolePanel, { metacom, current: 'metacom', pick, say: (l: string) => said.push(l) });
+    await settle();
+    node.querySelector<HTMLButtonElement>('.menu-anchor > button')!.click();
+    await settle();
+    const forget = [...node.querySelectorAll<HTMLButtonElement>('.menu button')]
+      .find((b) => b.textContent!.startsWith('Ordner vergessen'))!;
+    expect(forget.classList.contains('danger')).toBe(true);
+    forget.click();
+    await vi.waitFor(() => expect(pick).toHaveBeenCalledWith('arasaac'));
+    expect(provider.forget).toHaveBeenCalledOnce();
+    expect(said).toEqual(['METACOM-Ordner vergessen. Es gilt wieder ARASAAC.']);
+  });
+});
+
 describe('the components import what a consumer imports', () => {
   /* The compile half is the fixture, which `svelte-check` reads and `tsc`
      cannot: `test/fixtures/ConsumerCallSite.svelte` annotates a provider as the

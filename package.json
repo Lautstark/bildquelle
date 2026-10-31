@@ -31,6 +31,10 @@
       "types": "./dist/metacom-panel.d.ts",
       "default": "./dist/metacom-panel.js"
     },
+    "./symbole-panel": {
+      "types": "./dist/symbole-panel.d.ts",
+      "default": "./dist/symbole-panel.js"
+    },
     "./german": {
       "types": "./dist/german/index.d.ts",
       "default": "./dist/german/index.js"
@@ -46,6 +50,10 @@
     "./svelte/SymbolSearch": {
       "svelte": "./svelte/SymbolSearch.svelte",
       "default": "./svelte/SymbolSearch.svelte"
+    },
+    "./svelte/SymbolePanel": {
+      "svelte": "./svelte/SymbolePanel.svelte",
+      "default": "./svelte/SymbolePanel.svelte"
     }
   },
   "files": [
@@ -64,6 +72,7 @@
     "build:browser": "esbuild src/index.ts src/german/index.ts src/english/index.ts --bundle --format=esm --splitting --outdir=dist/browser --target=es2022 --sourcemap"
   },
   "dependencies": {
+    "@lautstark/werkzeuge": "github:Lautstark/werkzeuge#v2.1.0",
     "idb": "^8.0.3",
     "jszip": "^3.10.1"
   },
@@ -71,7 +80,7 @@
     "svelte": "^5"
   },
   "devDependencies": {
-    "@lautstark/design": "github:Lautstark/design#v1.33.1",
+    "@lautstark/design": "github:Lautstark/design#v1.42.0",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/git": "^11.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

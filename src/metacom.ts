@@ -152,6 +152,16 @@ export class MetacomProvider implements SymbolProvider {
     return this.#entries.length;
   }
 
+  /**
+   * How many pictures the walk under way has found so far, for a panel that
+   * wants to say something moves while ten thousand files are read. Told
+   * through `subscribe` every few hundred; zero when nothing is being walked.
+   */
+  get found(): number {
+    return this.#found;
+  }
+  #found = 0;
+
   /** True when the browser can persist the folder choice across visits. */
   static get supportsPersistentPicker(): boolean {
     return typeof (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker === 'function';
@@ -399,8 +409,11 @@ export class MetacomProvider implements SymbolProvider {
     this.#source = { kind: 'handle', handle };
     this.#setStatus({ kind: 'loading', code: 'indexing' });
     const entries: MetacomEntry[] = [];
+    this.#found = 0;
     try {
-      await walk(handle, '', entries);
+      await walk(handle, '', entries, () => {
+        if (entries.length % 250 === 0) { this.#found = entries.length; this.#emit(); }
+      });
     } catch (err) {
       this.#setStatus({
         kind: 'error',
@@ -410,6 +423,8 @@ export class MetacomProvider implements SymbolProvider {
         ...(err instanceof Error ? { detail: err.message } : {}),
       });
       return;
+    } finally {
+      this.#found = 0;
     }
     // Filenames only. This index stays on this machine, in this browser.
     // Through #reading, because the walk was the only failure handled here and
@@ -848,13 +863,16 @@ export class MetacomProvider implements SymbolProvider {
 
 /* ------------------------------------------------------------- helpers --- */
 
-async function walk(dir: FileSystemDirectoryHandle, prefix: string, out: MetacomEntry[]): Promise<void> {
+async function walk(
+  dir: FileSystemDirectoryHandle, prefix: string, out: MetacomEntry[], found?: () => void,
+): Promise<void> {
   for await (const [name, handle] of dir.entries()) {
     const path = prefix ? `${prefix}/${name}` : name;
     if (handle.kind === 'directory') {
-      await walk(handle as FileSystemDirectoryHandle, path, out);
+      await walk(handle as FileSystemDirectoryHandle, path, out, found);
     } else if (IMAGE_EXT.test(name)) {
       out.push(makeEntry(path));
+      found?.();
     }
   }
 }

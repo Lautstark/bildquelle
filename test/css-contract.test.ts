@@ -43,6 +43,7 @@ import { describe, expect, it } from 'vitest';
 import { metacomPanel, type MetacomAction } from '../src/metacom-panel.js';
 import MetacomPanel from '../svelte/MetacomPanel.svelte';
 import SymbolSearch from '../svelte/SymbolSearch.svelte';
+import SymbolePanel from '../svelte/SymbolePanel.svelte';
 import type { MetacomProvider } from '../src/metacom.js';
 import type {
   Candidate, Failed, Loading, NeedsSetup, ProviderStatus, SymbolProvider,
@@ -54,6 +55,8 @@ function stub(status: ProviderStatus): MetacomProvider {
     isReady: () => status.kind === 'ready',
     symbolCount: status.kind === 'ready' ? 1234 : 0,
     rootName: status.kind === 'ready' ? 'METACOM' : '',
+    found: status.kind === 'loading' ? 250 : 0,
+    renderings: () => [{ segment: 'farbig', count: 1 }, { segment: 'sw', count: 1 }],
     subscribe: () => () => {},
     requestPermission: async () => true,
     pickDirectory: async () => {},
@@ -160,6 +163,25 @@ describe('every class name the panels emit is drawn by components.css', () => {
     expect(missingFrom(panel.node)).toEqual([]);
     panel.drop();
   });
+
+  /* Every status, with each answer stored, and then everything that can be
+     unfolded unfolded: the setup under METACOM and the `⋯` of a ready one. */
+  it.each(EVERY_STATUS.map((s) => [`${s.kind}${'code' in s ? ' / ' + s.code : ''}`, s] as const))(
+    'svelte/SymbolePanel, %s, unfolded', async (_name, status) => {
+      for (const current of ['arasaac', 'metacom'] as const) {
+        const panel = render(SymbolePanel, {
+          metacom: stub(status), current, pick: () => {}, say: () => {},
+          attribution: '© ARASAAC', rendering: { current: null, choose: () => {} },
+        });
+        await settled();
+        panel.node.querySelector<HTMLButtonElement>('.answer.off .acts .btn')?.click();
+        await settled();
+        panel.node.querySelector<HTMLButtonElement>('.menu-anchor > button')?.click();
+        await settled();
+        expect(missingFrom(panel.node)).toEqual([]);
+        panel.drop();
+      }
+    });
 
   /* The search draws three things that can carry a class - the field, the grid
      and the credit line - and the credit is the one worth naming twice. It is
