@@ -1,3 +1,10 @@
+## [2.5.0](https://github.com/Lautstark/bildquelle/compare/v2.4.1...v2.5.0) (2026-10-31)
+
+### Features
+
+* **metacom:** a folder that holds METACOM's ZIP is read as the ZIP, and remembered ([c506432](https://github.com/Lautstark/bildquelle/commit/c5064326d8a777cc9cc2f490c904412a0dba0fd9))
+* **svelte:** SymbolePanel — „Welche Bilder?" with ARASAAC and METACOM as two answers ([7d85cef](https://github.com/Lautstark/bildquelle/commit/7d85cefc4d52a6a767ed60566fec7f0028785e94))
+
 ## [2.4.1](https://github.com/Lautstark/bildquelle/compare/v2.4.0...v2.4.1) (2026-10-01)
 
 ### Bug Fixes
