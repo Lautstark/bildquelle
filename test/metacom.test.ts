@@ -736,3 +736,88 @@ describe('the negation symbol, in the collection METACOM actually ships', () => 
     expect(hits.slice(2).map((h) => h.score)).toEqual([55, 55]);
   });
 });
+
+describe('a METACOM ZIP in the chosen folder', () => {
+  /*
+   * A folder picker shows no files, so somebody who has only METACOM's
+   * download picks the folder it lies in. That folder is not walked - every
+   * screenshot in Downloads would become a symbol - and the archive is read
+   * instead, under the folder's handle, so that it survives a reload.
+   */
+  async function zipOf(paths: string[]): Promise<File> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    for (const path of paths) zip.file(path, `bytes of ${path}`);
+    return new File([await zip.generateAsync({ type: 'arraybuffer' })], 'METACOM_9_Desktop.zip');
+  }
+
+  const downloads = (files: Record<string, File>, folders: string[] = []) => {
+    let opened = 0;
+    const handle = {
+      kind: 'directory',
+      name: 'Downloads',
+      queryPermission: async () => 'granted',
+      isSameEntry: async (other: unknown) => other === handle,
+      async getFileHandle(name: string) {
+        const file = files[name];
+        if (!file) throw new Error('no such file');
+        return { kind: 'file', name, getFile: async () => { opened += 1; return file; } };
+      },
+      async *entries() {
+        for (const name of Object.keys(files)) yield [name, { kind: 'file', name }] as const;
+        for (const name of folders) yield [name, { kind: 'directory', name, async *entries() {} }] as const;
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    return { handle, opened: () => opened };
+  };
+
+  it('reads the archive and not the rest of the folder', async () => {
+    const zip = await zipOf(['METACOM_9_Desktop/Essen/apfel.png', 'METACOM_9_Desktop/Essen/brot.png']);
+    const { handle } = downloads({
+      'METACOM_9_Desktop.zip': zip,
+      'Bildschirmfoto.png': fileAt('Bildschirmfoto.png'),
+    });
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(handle);
+
+    expect(metacom.status()).toEqual({ kind: 'ready' });
+    expect(metacom.symbolCount).toBe(2);
+    expect(metacom.rootName).toBe('METACOM_9_Desktop');
+    expect(await metacomStore.readIndex()).toMatchObject({ zip: 'METACOM_9_Desktop.zip' });
+    expect(await metacom.getImageUrl('METACOM_9_Desktop/Essen/apfel.png')).toMatch(/^blob:/);
+  });
+
+  it('opens the archive again after a reload, from the remembered folder', async () => {
+    const zip = await zipOf(['METACOM_9_Desktop/ja.png']);
+    const { handle, opened } = downloads({ 'METACOM_9_Desktop.zip': zip });
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    await new MetacomProvider().useDirectoryHandle(handle);
+    vi.spyOn(metacomStore, 'readHandle').mockResolvedValue(handle);
+
+    const reloaded = new MetacomProvider();
+    expect(await reloaded.restore()).toBe(true);
+    const before = opened();
+    expect(await reloaded.getImageUrl('METACOM_9_Desktop/ja.png')).toMatch(/^blob:/);
+    expect(opened()).toBe(before + 1);
+  });
+
+  it('prefers an unpacked METACOM folder beside the archive', async () => {
+    const zip = await zipOf(['METACOM_9_Desktop/ja.png']);
+    const { handle, opened } = downloads({ 'METACOM_9_Desktop.zip': zip }, ['METACOM_9_Desktop']);
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(handle);
+    expect(opened()).toBe(0);
+    expect((await metacomStore.readIndex())?.zip).toBeUndefined();
+  });
+
+  it('does the same for a folder handed over as a file list', async () => {
+    const zip = await zipOf(['METACOM_9_Desktop/ja.png', 'METACOM_9_Desktop/nein.png']);
+    Object.defineProperty(zip, 'webkitRelativePath', { value: 'Downloads/METACOM_9_Desktop.zip' });
+    const metacom = new MetacomProvider();
+    await metacom.useFileList([zip, fileAt('Downloads/Bildschirmfoto.png')]);
+    expect(metacom.symbolCount).toBe(2);
+    expect(metacom.rootName).toBe('METACOM_9_Desktop');
+  });
+});

@@ -47,7 +47,9 @@ interface BildquelleDB extends DBSchema {
    */
   metacomIndex: {
     key: string;
-    value: { key: string; rootName: string; entries: MetacomEntry[]; ts: number };
+    /** `zip` names the archive inside the stored folder the entries came out
+     *  of, when the folder held METACOM as a ZIP rather than as files. */
+    value: { key: string; rootName: string; entries: MetacomEntry[]; ts: number; zip?: string };
   };
   /** A persisted FileSystemDirectoryHandle: permission to read, not any content. */
   metacomHandles: { key: string; value: { key: string; handle: unknown } };
@@ -275,8 +277,10 @@ export const metacomStore = {
     return (await getDB()).get('metacomIndex', INDEX_KEY);
   },
 
-  async writeIndex(rootName: string, entries: MetacomEntry[]): Promise<void> {
-    await (await getDB()).put('metacomIndex', { key: INDEX_KEY, rootName, entries, ts: Date.now() });
+  async writeIndex(rootName: string, entries: MetacomEntry[], zip?: string): Promise<void> {
+    await (await getDB()).put('metacomIndex', {
+      key: INDEX_KEY, rootName, entries, ts: Date.now(), ...(zip ? { zip } : {}),
+    });
   },
 
   async readHandle(): Promise<unknown> {

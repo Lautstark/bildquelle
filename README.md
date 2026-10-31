@@ -338,6 +338,17 @@ chosen: in English, ARASAAC is the source that works.
 | Chrome / Edge | `showDirectoryPicker()` | yes, one-time |
 | Firefox / Safari | `<input webkitdirectory>` | no, until reload |
 | all | ZIP file, unpacked in-browser | no |
+| Chrome / Edge | a folder holding METACOM's ZIP, e.g. Downloads | yes, one-time |
+
+**A chosen folder that holds METACOM's ZIP is read as the ZIP.** A folder
+picker shows no files, so somebody who has only the download picks the folder
+it lies in. When that folder is not itself called METACOM and holds no unpacked
+METACOM folder beside the archive, the archive at its top (`metacom*.zip`) is
+read and the rest of the folder is not walked: Downloads can hold anything, and
+every screenshot in it would become a symbol. The folder's handle is what is
+stored, with the archive's name in the index (`zip`), so the archive is opened
+again on the first picture after a reload. `useFileList` applies the same rule
+to a folder handed over as a file list.
 
 ### What lands in IndexedDB
 

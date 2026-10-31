@@ -35,7 +35,12 @@ type Source =
   | { kind: 'none' }
   | { kind: 'handle'; handle: FileSystemDirectoryHandle }
   | { kind: 'files'; files: Map<string, File> }
-  | { kind: 'zip'; zip: JSZipType };
+  | { kind: 'zip'; zip: JSZipType }
+  /* A METACOM ZIP lying in the folder somebody chose. The folder's handle is
+     what is stored, so the archive is opened again on the first picture after
+     a reload rather than lost with the session, as a ZIP handed over on its
+     own is. */
+  | { kind: 'packed'; handle: FileSystemDirectoryHandle; name: string; zip: Promise<JSZipType> | null };
 
 /**
  * METACOM is commercial and licensed per person. The hard rule this class exists
@@ -169,6 +174,7 @@ export class MetacomProvider implements SymbolProvider {
     this.#source = { kind: 'handle', handle };
     const index = await metacomStore.readIndex();
     if (index && index.entries.length > 0) {
+      if (index.zip) this.#source = { kind: 'packed', handle, name: index.zip, zip: null };
       this.#adopt(index.entries, index.rootName);
       return true;
     }
@@ -229,7 +235,8 @@ export class MetacomProvider implements SymbolProvider {
        * The same folder handed over again keeps both: dropping its stored
        * index would cost a re-walk of ten thousand files for nothing.
        */
-      const current = this.#source.kind === 'handle' ? this.#source.handle : null;
+      const current = this.#source.kind === 'handle' || this.#source.kind === 'packed'
+        ? this.#source.handle : null;
       const stored = await metacomStore.readHandle().catch(() => null);
       if (!(await sameFolder(current, handle))) this.#letGo(handle.name);
       const keepIndex = await sameFolder(stored, handle);
@@ -272,6 +279,10 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Firefox/Safari path: <input type="file" webkitdirectory>. Session-only. */
   async useFileList(fileList: FileList | File[]): Promise<void> {
+    /* The same rule as a chosen folder's (see #buildIndexFromHandle): a
+       METACOM ZIP at the top of the picked folder is read and the rest is not. */
+    const packed = zipAmong(Array.from(fileList));
+    if (packed) return this.useZip(packed);
     this.#setStatus({ kind: 'loading', code: 'reading-folder' });
     await this.#reading(async () => {
       const files = new Map<string, File>();
@@ -354,12 +365,38 @@ export class MetacomProvider implements SymbolProvider {
 
   /** Re-walks the folder, for when the user has added symbols since the last index. */
   async rebuildIndex(): Promise<void> {
-    if (this.#source.kind === 'handle') await this.#buildIndexFromHandle(this.#source.handle);
+    const source = this.#source;
+    if (source.kind === 'handle' || source.kind === 'packed') await this.#buildIndexFromHandle(source.handle);
   }
 
   /* ------------------------------------------------------------- index ---- */
 
   async #buildIndexFromHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+    /*
+     * „Hast du nur die ZIP-Datei, wähl den Ordner, in dem sie liegt." A browser's
+     * folder picker shows no files, so somebody holding only METACOM's download
+     * picks the folder it lies in, usually Downloads. That folder is not walked:
+     * it can hold anything, and every screenshot in it would be indexed as a
+     * METACOM symbol. The archive is read instead, and the folder's handle is
+     * what is remembered.
+     */
+    const packed = await zipInside(handle).catch(() => null);
+    if (packed) {
+      await this.#reading(async () => {
+        this.#setStatus({ kind: 'loading', code: 'unpacking-zip' });
+        this.#source = { kind: 'packed', handle, name: packed, zip: null };
+        const zip = await this.#unpacked();
+        const entries: MetacomEntry[] = [];
+        zip.forEach((path, entry) => {
+          if (!entry.dir && IMAGE_EXT.test(path)) entries.push(makeEntry(path));
+        });
+        const root = packed.replace(/\.zip$/i, '');
+        await metacomStore.writeIndex(root, entries, packed);
+        this.#adopt(entries, root);
+      }).catch(() => undefined); // read-failed is the status now, as for a walk that fails
+      return;
+    }
+    this.#source = { kind: 'handle', handle };
     this.#setStatus({ kind: 'loading', code: 'indexing' });
     const entries: MetacomEntry[] = [];
     try {
@@ -381,6 +418,24 @@ export class MetacomProvider implements SymbolProvider {
       await metacomStore.writeIndex(handle.name, entries);
       this.#adopt(entries, handle.name);
     });
+  }
+
+  /** The archive a `packed` source stands for, opened once per session. */
+  async #unpacked(): Promise<JSZipType> {
+    const source = this.#source;
+    if (source.kind !== 'packed') throw new Error('No ZIP in the chosen folder.');
+    source.zip ??= (async () => {
+      const file = await (await source.handle.getFileHandle(source.name)).getFile();
+      const { default: JSZip } = await import('jszip');
+      return JSZip.loadAsync(file);
+    })();
+    try {
+      return await source.zip;
+    } catch (err) {
+      // A failed opening is not remembered, so the next picture tries again.
+      source.zip = null;
+      throw err;
+    }
   }
 
   /** Everything held about the current folder, dropped in memory. */
@@ -746,6 +801,7 @@ export class MetacomProvider implements SymbolProvider {
       }
       if (source.kind === 'files') return source.files.get(path) ?? null;
       if (source.kind === 'zip') return (await source.zip.file(path)?.async('blob')) ?? null;
+      if (source.kind === 'packed') return (await (await this.#unpacked()).file(path)?.async('blob')) ?? null;
     } catch {
       return null;
     }
@@ -825,6 +881,37 @@ async function sameFolder(known: unknown, handle: FileSystemDirectoryHandle): Pr
 }
 
 const firstSegment = (path: string) => path.split('/')[0] ?? 'METACOM';
+
+/** A file name METACOM's own download carries, e.g. `METACOM_9_Desktop.zip`. */
+const METACOM_ZIP = /metacom[^/]*\.zip$/i;
+
+/**
+ * The METACOM archive lying at the top of a chosen folder, if that is what
+ * the folder is for.
+ *
+ * Only when the folder is not itself METACOM and holds no unpacked METACOM
+ * folder beside the archive: somebody who unpacked the download and kept the
+ * ZIP should get the folder, which is faster to read and needs no unpacking
+ * on every visit.
+ */
+async function zipInside(dir: FileSystemDirectoryHandle): Promise<string | null> {
+  if (/metacom/i.test(dir.name)) return null;
+  let found: string | null = null;
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === 'directory' && /metacom/i.test(name)) return null;
+    if (handle.kind === 'file' && !found && METACOM_ZIP.test(name)) found = name;
+  }
+  return found;
+}
+
+/** The same question of a folder handed over as a file list (Safari, Firefox). */
+function zipAmong(files: File[]): File | null {
+  const path = (file: File) => (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+  const top = files.filter((file) => path(file).split('/').length <= 2);
+  if (files.some((file) => /metacom/i.test(path(file).split('/')[0] ?? ''))) return null;
+  if (files.some((file) => { const parts = path(file).split('/'); return parts.length > 2 && /metacom/i.test(parts[1]!); })) return null;
+  return top.find((file) => METACOM_ZIP.test(path(file))) ?? null;
+}
 
 /**
  * A run-together pair of negation words, split apart: `"nichtkein"` becomes
