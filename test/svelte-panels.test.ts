@@ -670,6 +670,8 @@ describe('svelte/SymbolePanel', () => {
     expect(more.querySelector('p')!.textContent).toContain('Hast du nur die ZIP-Datei');
     expect([...more.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Ordner wählen …']);
     expect(more.querySelector('a')!.getAttribute('href')).toContain('metacom-symbole.de');
+    // „Einrichten …" took itself away; focus went to what it unfolded.
+    expect(document.activeElement).toBe(button(node, 'Ordner wählen …'));
   });
 
   it('makes METACOM the answer once its folder has been read in', async () => {

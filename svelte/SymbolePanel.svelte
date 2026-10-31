@@ -33,6 +33,7 @@
    * No METACOM byte moves here either: the panel counts symbols and names a
    * folder.
    */
+  import { tick } from 'svelte';
   import { MetacomProvider, needsAttention } from '@lautstark/bildquelle';
   import {
     WORDS, headlineFor, type PanelLang, type SymbolSource,
@@ -80,6 +81,7 @@
   let busy = $state(false);
   let setting = $state(false);
   let folderInput: HTMLInputElement;
+  let chooseButton = $state<HTMLButtonElement>();
 
   const words = $derived(WORDS[lang]);
   const status = $derived.by(() => { void told; return metacom.status(); });
@@ -142,6 +144,14 @@
     else void run(choose);
   }
 
+  /** „Einrichten …" takes itself away when pressed, and focus would fall to
+   *  the page with it. It lands on the button it unfolded instead. */
+  async function setUp(): Promise<void> {
+    setting = true;
+    await tick();
+    chooseButton?.focus();
+  }
+
   function rows(): MenuRow[] {
     const out: MenuRow[] = [
       { label: words.chooseAnother, run: pressChoose },
@@ -196,7 +206,7 @@
         <span class="answer__note">{words.metacomNeeds}</span>
         {#if !unfolded}
           <div class="acts">
-            <button type="button" class="btn sm" onclick={() => { setting = true; }}>{words.setUp}</button>
+            <button type="button" class="btn sm" onclick={() => void setUp()}>{words.setUp}</button>
           </div>
         {:else}
           <div class="answer__more">
@@ -232,7 +242,7 @@
               {#if !MetacomProvider.supportsPersistentPicker}<p class="small muted">{words.forgets}</p>{/if}
               {#if lang === 'en'}<p class="small muted">{words.germanOnly}</p>{/if}
               <div class="acts">
-                <button type="button" class="btn sm primary" disabled={busy}
+                <button bind:this={chooseButton} type="button" class="btn sm primary" disabled={busy}
                   onclick={pressChoose}>{words.choose}</button>
                 <a class="small" href={words.licenceUrl} target="_blank"
                   rel="noopener noreferrer">{words.licenceLink}</a>
