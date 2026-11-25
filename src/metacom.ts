@@ -68,6 +68,30 @@ export class MetacomProvider implements SymbolProvider {
   #byPath = new Map<string, MetacomEntry>();
   /* Built on the first search after an index changes, thrown away with it. */
   #categories: Map<string, readonly string[]> | null = null;
+  /*
+   * Every entry's label, folded, in the index's own order — and `pairApart`'s
+   * answer for it, which is null for all but a handful.
+   *
+   * Both used to be worked out inside the loop in search(), which is to say
+   * once per entry per keystroke. Folding is not a cheap string operation:
+   * `normalize`, `toLowerCase`, four `replace`s and a Unicode property regex,
+   * run over all of a household's 68,000 labels before the first of them was
+   * scored. Measured on a synthetic index of that shape, it was most of what a
+   * search cost, and a keystroke is the one place in this package where a
+   * person is waiting on the main thread.
+   *
+   * The answer to a query cannot be cached, because every query is a different
+   * question. Its input can: these change only when the index does, so they
+   * are derived once per index and dropped with it, the way #categories is.
+   */
+  #folded: { label: string; paired: string | null }[] | null = null;
+  /*
+   * The entries behind each file name, keyed by the NFC-composed stem with its
+   * case intact — what `idForName` resolves against. See #stems().
+   */
+  #byStem: Map<string, MetacomEntry[]> | null = null;
+  /* The folders that tell parallel renderings apart — see renderings(). */
+  #renderingList: { segment: string; count: number }[] | null = null;
   #objectUrls = new Map<string, string>();
   /*
    * Reads that have started and not yet finished, by id, so that a picture
@@ -408,11 +432,16 @@ export class MetacomProvider implements SymbolProvider {
     }
     this.#source = { kind: 'handle', handle };
     this.#setStatus({ kind: 'loading', code: 'indexing' });
-    const entries: MetacomEntry[] = [];
+    let entries: MetacomEntry[] = [];
     this.#found = 0;
     try {
-      await walk(handle, '', entries, () => {
-        if (entries.length % 250 === 0) { this.#found = entries.length; this.#emit(); }
+      /* Counted here rather than off `entries.length`, which is only filled in
+         once the overlapping reads have landed: the count is what the panel
+         says while they are still running. */
+      let seen = 0;
+      entries = await walk(handle, '', () => {
+        seen += 1;
+        if (seen % 250 === 0) { this.#found = seen; this.#emit(); }
       });
     } catch (err) {
       this.#setStatus({
@@ -459,6 +488,9 @@ export class MetacomProvider implements SymbolProvider {
     this.#entries = [];
     this.#byPath.clear();
     this.#categories = null;
+    this.#folded = null;
+    this.#byStem = null;
+    this.#renderingList = null;
     this.#rootName = rootName;
   }
 
@@ -475,6 +507,9 @@ export class MetacomProvider implements SymbolProvider {
     this.#entries = entries;
     this.#byPath = new Map(entries.map((e) => [e.path, e]));
     this.#categories = null;
+    this.#folded = null;
+    this.#byStem = null;
+    this.#renderingList = null;
     this.#rootName = rootName;
     this.#setStatus(
       entries.length > 0
@@ -484,6 +519,35 @@ export class MetacomProvider implements SymbolProvider {
             code: 'no-images',
           },
     );
+    if (entries.length > 0) this.#warm(entries);
+  }
+
+  /**
+   * The derived tables, worked out before anybody asks for them.
+   *
+   * Each of them is built on first use and costs a pass or two over the whole
+   * index — folding 40,000 labels is around 110 ms. Built on demand, that is
+   * paid by whoever asks first, and who asks first is a person who has just
+   * typed a letter or opened something saved. Nothing is waiting here: the
+   * folder has been read, the status says `ready`, and the next thing to
+   * happen is somebody's first keystroke.
+   *
+   * After a turn of the event loop rather than now, because `#adopt` is on the
+   * path that answers the folder picker and the panel wants to draw „Fertig"
+   * without 150 ms of string work in front of it.
+   *
+   * `entries` is the index this was called about: a folder let go of, or
+   * replaced, in that one turn leaves this with nothing to warm, and warming
+   * it anyway would rebuild the tables of a folder the provider no longer
+   * holds — and so revive the thing #letGo and #revokeAll exist to prevent.
+   */
+  #warm(entries: MetacomEntry[]): void {
+    setTimeout(() => {
+      if (this.#entries !== entries) return;
+      this.#foldedLabels();
+      this.#stems();
+      this.#categoriesOf();
+    }, 0);
   }
 
   /* ------------------------------------------------------------ search ---- */
@@ -542,13 +606,29 @@ export class MetacomProvider implements SymbolProvider {
      * was already in the answer. Rows are reordered; none appear, none drop.
      */
     const folders = this.#categoriesOf();
+    const prepared = this.#foldedLabels();
     const scored: Candidate[] = [];
-    for (const entry of this.#entries) {
-      const label = foldGerman(entry.label);
+    for (let at = 0; at < prepared.length; at += 1) {
+      const { label, paired } = prepared[at]!;
+      /*
+       * The gate, and it is exact rather than a heuristic: every rung of
+       * scoreLabel's ladder that clears the threshold below requires the query
+       * to appear in the label. Equal to it contains it; starting with it,
+       * with or without a separator, contains it; a word of the label that is
+       * the query, or starts with it, is part of the label and contains it;
+       * and the last rung above 5 *is* containment. So a label that does not
+       * contain the query cannot score 25, and asking the cheap question first
+       * spares nearly every entry the split-and-compare ladder.
+       *
+       * `paired` is asked too, because it is the one rewrite that adds a
+       * character the label itself has not got: a search for „nicht kein"
+       * is contained in „nicht kein" and not in „nichtkein".
+       */
+      if (!label.includes(folded) && !(paired !== null && paired.includes(folded))) continue;
       let best = scoreLabel(folded, label);
-      const paired = pairApart(label);
       if (paired) best = Math.max(best, scoreLabel(folded, paired));
       if (best >= 25) {
+        const entry = this.#entries[at]!;
         const categories = folders.get(entry.path);
         scored.push({
           id: entry.path,
@@ -577,6 +657,16 @@ export class MetacomProvider implements SymbolProvider {
         || this.#renderingRank(a.id) - this.#renderingRank(b.id)
         || a.label.length - b.label.length)
       .slice(0, 24);
+  }
+
+  /** Every label folded, and paired where it is a pair — see #folded. */
+  #foldedLabels(): { label: string; paired: string | null }[] {
+    if (this.#folded) return this.#folded;
+    this.#folded = this.#entries.map((entry) => {
+      const label = foldGerman(entry.label);
+      return { label, paired: pairApart(label) };
+    });
+    return this.#folded;
   }
 
   #renderingRank(path: string): number {
@@ -660,6 +750,21 @@ export class MetacomProvider implements SymbolProvider {
    * language this package has never seen.
    */
   renderings(): { segment: string; count: number }[] {
+    /*
+     * Cached with the index, and copied out.
+     *
+     * `SymbolePanel` reads this through a `$derived` that depends on the
+     * provider's status, so it is recomputed every time the provider says
+     * anything — and it costs two passes over every entry, around 27 ms over
+     * 40,000 of them. #categoriesOf asks for it as well. The answer is a
+     * function of the index and nothing else, so it is worked out once per
+     * index like the rest of the derived tables here.
+     *
+     * A copy rather than the array itself: this is a public method whose
+     * answer a caller may sort or splice, and the cache must not be what gets
+     * reordered.
+     */
+    if (this.#renderingList) return this.#renderingList.map((one) => ({ ...one }));
     const byName = new Map<string, string[][]>();
     for (const entry of this.#entries) {
       const segments = entry.path.split('/');
@@ -682,9 +787,10 @@ export class MetacomProvider implements SymbolProvider {
       }
     }
 
-    return [...counts]
+    this.#renderingList = [...counts]
       .map(([segment, count]) => ({ segment, count }))
       .sort((a, b) => b.count - a.count || a.segment.localeCompare(b.segment));
+    return this.#renderingList.map((one) => ({ ...one }));
   }
 
   /* ------------------------------------------------------------- image ---- */
@@ -749,7 +855,14 @@ export class MetacomProvider implements SymbolProvider {
   #idForPath(path: string): string | null {
     const wanted = path.normalize('NFC');
     const suffix = '/' + wanted;
-    for (const entry of this.#entries) {
+    /*
+     * Only the entries whose own file name is this name's last segment, which
+     * is every entry that could possibly answer: a match is the whole stripped
+     * path or it ends with `/` + the name, and both end with the name's last
+     * segment. The group is in index order, so the first member that matches
+     * is the same entry the walk over all of them used to return.
+     */
+    for (const entry of this.#stems().get(lastSegment(wanted)) ?? []) {
       const stripped = entry.path.replace(IMAGE_EXT, '').normalize('NFC');
       if (stripped === wanted || stripped.endsWith(suffix)) return entry.path;
     }
@@ -758,12 +871,36 @@ export class MetacomProvider implements SymbolProvider {
 
   #idForStem(stem: string): string | null {
     if (!stem) return null;
-    const wanted = stem.normalize('NFC');
+    return this.#stems().get(stem.normalize('NFC'))?.[0]?.path ?? null;
+  }
+
+  /*
+   * The entries behind each file name, in index order.
+   *
+   * This is the shape `idForName` always wanted. Both lookups above were a
+   * walk over every entry, composing and extension-stripping each one as they
+   * went — around 45 ms over a 68,000-file collection, measured, and paid per
+   * reference rather than per search. That is the cost a host meets when it
+   * opens something saved: a sheet of thirty symbols whose stored paths no
+   * longer match this copy of the folder asked thirty times, and the second
+   * second of that wait is the person watching an empty page.
+   *
+   * Keyed on the NFC-composed stem with its case intact, because that is the
+   * comparison `idForName` documents: composed so that a name typed on a
+   * keyboard finds a file written decomposed on a Mac disk, and case-exact
+   * because a case difference is a real difference between two licensed files.
+   */
+  #stems(): Map<string, MetacomEntry[]> {
+    if (this.#byStem) return this.#byStem;
+    const built = new Map<string, MetacomEntry[]>();
     for (const entry of this.#entries) {
-      const base = entry.path.split('/').pop() ?? entry.path;
-      if (base.replace(IMAGE_EXT, '').normalize('NFC') === wanted) return entry.path;
+      const key = lastSegment(entry.path).replace(IMAGE_EXT, '').normalize('NFC');
+      const group = built.get(key);
+      if (group) group.push(entry);
+      else built.set(key, [entry]);
     }
-    return null;
+    this.#byStem = built;
+    return built;
   }
 
   async getImageUrl(id: string): Promise<string | null> {
@@ -863,18 +1000,61 @@ export class MetacomProvider implements SymbolProvider {
 
 /* ------------------------------------------------------------- helpers --- */
 
+/**
+ * Every image file under a folder, in the order a depth-first walk meets them.
+ *
+ * **The subfolders are read at the same time, and the order is the order all
+ * the same.** Reading one was the whole cost of setting up: a folder opened
+ * through the File System Access API is a question put to the browser process
+ * and answered over IPC — measured at around 30 ms in the household whose copy
+ * holds 68,000 files (see #dirs) — and walking a collection's few hundred
+ * folders strictly one after another spends all of that waiting, with nothing
+ * else in flight. Nothing about the answers depends on the order they arrive
+ * in, so a subfolder's read starts as soon as the entry naming it is met,
+ * while the rest of the parent is still being listed.
+ *
+ * What the order still is, exactly: entries are collected per folder in
+ * iteration order, a file as itself and a subfolder as the promise of its
+ * subtree, and that list is flattened in that same order once the reads have
+ * landed. So a file listed after a subfolder still comes after that whole
+ * subtree, which is what the sequential walk did. This matters beyond
+ * tidiness — `idForName` answers with the first entry of a group and
+ * `renderings` breaks ties on it, so a different order would resolve an old
+ * stored name to a different rendering of the same symbol.
+ *
+ * `found` is called as each file is *met*, not as the list is assembled, so a
+ * panel counting its way to ten thousand still counts while the reads overlap.
+ *
+ * How much is in flight at once is the tree's own width: one folder's
+ * subfolders start together, and theirs in turn. For a symbol collection —
+ * a handful of rendering folders over a few dozen categories — that is a few
+ * hundred reads, which is what makes the IPC round trips overlap rather than
+ * queue.
+ */
 async function walk(
-  dir: FileSystemDirectoryHandle, prefix: string, out: MetacomEntry[], found?: () => void,
-): Promise<void> {
+  dir: FileSystemDirectoryHandle, prefix: string, found?: () => void,
+): Promise<MetacomEntry[]> {
+  const parts: (MetacomEntry | Promise<MetacomEntry[]>)[] = [];
   for await (const [name, handle] of dir.entries()) {
     const path = prefix ? `${prefix}/${name}` : name;
     if (handle.kind === 'directory') {
-      await walk(handle as FileSystemDirectoryHandle, path, out, found);
+      parts.push(walk(handle as FileSystemDirectoryHandle, path, found));
     } else if (IMAGE_EXT.test(name)) {
-      out.push(makeEntry(path));
+      parts.push(makeEntry(path));
       found?.();
     }
   }
+
+  const out: MetacomEntry[] = [];
+  for (const part of parts) {
+    if (!(part instanceof Promise)) { out.push(part); continue; }
+    // One at a time rather than a spread: a subtree can hold tens of thousands
+    // of entries, and `push(...subtree)` passes every one of them as an
+    // argument — which is how a large collection would end in a stack overflow
+    // instead of an index.
+    for (const entry of await part) out.push(entry);
+  }
+  return out;
 }
 
 /**
@@ -899,6 +1079,9 @@ async function sameFolder(known: unknown, handle: FileSystemDirectoryHandle): Pr
 }
 
 const firstSegment = (path: string) => path.split('/')[0] ?? 'METACOM';
+
+/** The file name at the end of a path — the part a stored name has to match. */
+const lastSegment = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 
 /** A file name METACOM's own download carries, e.g. `METACOM_9_Desktop.zip`. */
 const METACOM_ZIP = /metacom[^/]*\.zip$/i;

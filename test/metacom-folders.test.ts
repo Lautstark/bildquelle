@@ -98,3 +98,99 @@ describe('reading a picture out of a folder', () => {
     expect(shelf.opened()).toBe(4);
   });
 });
+
+/**
+ * The indexing walk, which is the other half of the same cost.
+ *
+ * Opening a folder is an IPC round trip to the browser process, and the walk
+ * does one per folder in the collection — a few hundred of them, at the ~30ms
+ * the comment at the top of this file records. Sequentially that is the whole
+ * of „Einrichten …"; overlapped it is the slowest branch of the tree.
+ *
+ * What these tests hold is the pair of properties that makes the overlap safe:
+ * the reads really do run at the same time, and the order of the finished
+ * index is still the order a strict depth-first walk produced. The second is
+ * not cosmetic — `idForName` answers with the first entry of a group, so the
+ * order decides which rendering an old stored reference resolves to.
+ */
+function timedCollection(paths: string[]) {
+  let live = 0;
+  let peak = 0;
+
+  const at = (prefix: string, name: string) => (prefix ? `${prefix}/${name}` : name);
+
+  const folder = (prefix: string): FileSystemDirectoryHandle => ({
+    kind: 'directory',
+    name: prefix.split('/').pop() ?? 'root',
+    async *entries() {
+      live += 1;
+      peak = Math.max(peak, live);
+      /* A folder answers after a turn of the event loop, the way a real one
+         answers after an IPC round trip. Without a suspension point there is
+         nothing for anything else to overlap with. */
+      await new Promise((resolve) => { setTimeout(resolve, 5); });
+      try {
+        const here = paths
+          .filter((path) => path.startsWith(prefix ? `${prefix}/` : ''))
+          .map((path) => path.slice(prefix ? prefix.length + 1 : 0).split('/')[0]!);
+        for (const name of new Set(here)) {
+          const inside = at(prefix, name);
+          yield [name, paths.includes(inside)
+            ? { kind: 'file', name }
+            : folder(inside)] as const;
+        }
+      } finally {
+        live -= 1;
+      }
+    },
+  } as unknown as FileSystemDirectoryHandle);
+
+  return { root: folder(''), peak: () => peak };
+}
+
+describe('walking the folder to index it', () => {
+  /* A file listed after a subfolder, deliberately: that is the one case where
+     „all the files, then all the subtrees" would differ from a depth-first
+     walk, and it is the order of these two that a stored reference rests on. */
+  const paths = [
+    'METACOM_9/Verben/angeln.png',
+    'METACOM_9/Verben/tief/tauchen.png',
+    'METACOM_9/Verben/wuerfeln.png',
+    'METACOM_9/Nomen/apfel.png',
+    'METACOM_9/Nomen/birne.png',
+    'METACOM_9/ja.png',
+  ];
+
+  it('reads the subfolders at the same time', async () => {
+    const shelf = timedCollection(paths);
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(shelf.root);
+
+    expect(metacom.symbolCount).toBe(6);
+    // Sequentially this is 1: a folder is finished before the next is opened.
+    expect(shelf.peak()).toBeGreaterThan(1);
+  });
+
+  it('indexes them in depth-first order all the same', async () => {
+    const shelf = timedCollection(paths);
+    vi.spyOn(metacomStore, 'writeHandle').mockResolvedValue(undefined);
+    const written = vi.spyOn(metacomStore, 'writeIndex').mockResolvedValue(undefined);
+
+    const metacom = new MetacomProvider();
+    await metacom.useDirectoryHandle(shelf.root);
+
+    /* The index as it was stored, which is the order every derived table and
+       every `idForName` answer is built on. „ja.png" sits after the two
+       subtrees of METACOM_9 because the folders were listed before it. */
+    expect(written.mock.calls[0]?.[1].map((entry) => entry.path)).toEqual([
+      'METACOM_9/Verben/angeln.png',
+      'METACOM_9/Verben/tief/tauchen.png',
+      'METACOM_9/Verben/wuerfeln.png',
+      'METACOM_9/Nomen/apfel.png',
+      'METACOM_9/Nomen/birne.png',
+      'METACOM_9/ja.png',
+    ]);
+  });
+});
