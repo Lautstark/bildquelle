@@ -206,6 +206,58 @@ function getDB(): Promise<IDBPDatabase<BildquelleDB>> {
  */
 const searchKey = (lang: LanguageCode, query: string) => `${lang}:${query}`;
 
+/**
+ * Which label belongs to which pictogram id, read out of the cached searches
+ * once and kept in memory until a search is written.
+ *
+ * `findLabel` is asked per reference, not per search: a host restoring a board
+ * of thirty ARASAAC keys whose labels are not in the provider's memory asks
+ * thirty times, and it used to walk the whole store with a cursor each time —
+ * one IndexedDB request per row, awaited, and on a miss the walk ran twice
+ * (the reader's language, then everything). Measured over 300 cached searches:
+ * 23 ms for a hit near the end, 42 ms for a miss, 1.2 s for thirty of them.
+ *
+ * One `getAll` instead, and the answers are in memory for the next twenty-nine
+ * — a board's worth of lookups is one read of a store that holds result sets
+ * and no image bytes, so it is kilobytes rather than megabytes.
+ *
+ * Two maps, because the pass order mattered and still does: the reader's own
+ * language first, then any language at all. `byLang` is keyed as the store is,
+ * `any` on the bare id, and both take the first row to claim an id, which is
+ * the row a cursor in key order reached first. Rows written before the key
+ * carried a language have no language to file them under and so appear only in
+ * `any`, exactly as the second pass found them.
+ */
+let labels: Promise<{ byLang: Map<string, string>; any: Map<string, string> }> | null = null;
+
+function labelIndex(): Promise<{ byLang: Map<string, string>; any: Map<string, string> }> {
+  if (!labels) {
+    labels = (async () => {
+      const rows = await (await getDB()).getAll('arasaacSearch');
+      const byLang = new Map<string, string>();
+      const any = new Map<string, string>();
+      for (const row of rows) {
+        const cut = row.query.indexOf(':');
+        const lang = cut > 0 ? row.query.slice(0, cut) : null;
+        for (const candidate of row.candidates) {
+          if (lang && !byLang.has(`${lang}:${candidate.id}`)) {
+            byLang.set(`${lang}:${candidate.id}`, candidate.label);
+          }
+          if (!any.has(candidate.id)) any.set(candidate.id, candidate.label);
+        }
+      }
+      return { byLang, any };
+    })().catch((err) => {
+      // The next call tries again rather than holding a rejected promise, the
+      // way getDB does. A cache that cannot be read is a cache that is empty,
+      // and arasaac.ts treats a throw here as "no label".
+      labels = null;
+      throw err;
+    });
+  }
+  return labels;
+}
+
 export const arasaacCache = {
   async readSearch(lang: LanguageCode, query: string) {
     return (await getDB()).get('arasaacSearch', searchKey(lang, query));
@@ -216,6 +268,10 @@ export const arasaacCache = {
   ): Promise<void> {
     await (await getDB()).put(
       'arasaacSearch', { query: searchKey(lang, query), candidates, ts: Date.now() });
+    // A row the index below has not seen. Dropped rather than added to: a
+    // search is answered from the network far less often than labels are
+    // asked for, and rebuilding is one read.
+    labels = null;
   },
 
   /**
@@ -230,19 +286,8 @@ export const arasaacCache = {
    * leave the key blank.
    */
   async findLabel(id: string, lang?: LanguageCode): Promise<string | null> {
-    const db = await getDB();
-    const passes = lang
-      ? [IDBKeyRange.bound(`${lang}:`, `${lang}:\uffff`), undefined]
-      : [undefined];
-    for (const range of passes) {
-      let cursor = await db.transaction('arasaacSearch').store.openCursor(range);
-      while (cursor) {
-        const hit = cursor.value.candidates.find((c) => c.id === id);
-        if (hit) return hit.label;
-        cursor = await cursor.continue();
-      }
-    }
-    return null;
+    const { byLang, any } = await labelIndex();
+    return (lang ? byLang.get(`${lang}:${id}`) : undefined) ?? any.get(id) ?? null;
   },
 
   async readImage(id: string): Promise<Blob | null> {
@@ -255,6 +300,7 @@ export const arasaacCache = {
 
   async clear(): Promise<void> {
     const db = await getDB();
+    labels = null;
     await Promise.all([db.clear('arasaacSearch'), db.clear('arasaacImages')]);
   },
 };
