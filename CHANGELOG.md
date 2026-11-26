@@ -1,3 +1,10 @@
+## [2.5.2](https://github.com/Lautstark/bildquelle/compare/v2.5.1...v2.5.2) (2026-11-26)
+
+### Performance Improvements
+
+* **arasaac:** read the cached labels once, not with a cursor per lookup ([882fdb9](https://github.com/Lautstark/bildquelle/commit/882fdb9327f719e61e95b263ce070f846d221003))
+* **metacom:** the work a folder costs is done once per index, not per question ([eb2b8de](https://github.com/Lautstark/bildquelle/commit/eb2b8de42f1c88963e38c4b4d74c4f75b7f22103))
+
 ## [2.5.1](https://github.com/Lautstark/bildquelle/compare/v2.5.0...v2.5.1) (2026-10-31)
 
 ### Bug Fixes
